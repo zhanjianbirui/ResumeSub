@@ -8,3 +8,9 @@ export function markField(el: HTMLElement, state: keyof typeof STYLES): void {
   el.style.setProperty('outline', STYLES[state], 'important');
   el.style.setProperty('outline-offset', '1px', 'important');
 }
+
+export function unmarkField(el: HTMLElement): void {
+  delete el.dataset.resumesub;
+  el.style.removeProperty('outline');
+  el.style.removeProperty('outline-offset');
+}

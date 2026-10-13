@@ -40,6 +40,16 @@ function selectIsEmpty(el: HTMLSelectElement): boolean {
   return selected.value === '' || selected.disabled || selected.hidden !== false || PLACEHOLDER_OPTION.test(selected.text.trim());
 }
 
+/** 控件当前是否已有值（文本非空、下拉非占位、单选组已选、文件已选）。 */
+export function hasValue(el: HTMLElement): boolean {
+  if (el instanceof HTMLSelectElement) return !selectIsEmpty(el);
+  if (el instanceof HTMLTextAreaElement) return el.value.trim() !== '';
+  if (!(el instanceof HTMLInputElement)) return false;
+  if (el.type === 'radio') return radioGroup(el).some((r) => r.checked);
+  if (el.type === 'file') return (el.files?.length ?? 0) > 0;
+  return el.value.trim() !== '';
+}
+
 function fillSelect(el: HTMLSelectElement, value: string): FillOutcome {
   if (!selectIsEmpty(el)) return 'skipped';
   if (!Array.from(el.options).some((o) => o.value === value)) return 'failed';

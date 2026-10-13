@@ -86,3 +86,72 @@ describe('waitForStable', () => {
     vi.useRealTimers();
   });
 });
+
+describe('session hardening (D1-D4)', () => {
+  const input = (name: string) => document.querySelector(`[name="${name}"]`) as HTMLInputElement;
+
+  it('fills a re-added blank copy of a removed field (D1)', async () => {
+    document.body.innerHTML = '<div id="w"><label>姓名<input name="n"></label></div>';
+    const { session, requestPlan } = setup(fillByLabel({ 姓名: '李明' }));
+    await session.run();
+    document.getElementById('w')!.innerHTML = '<label>姓名<input name="n"></label>';
+    await session.run();
+    expect(requestPlan).toHaveBeenCalledTimes(2);
+    expect(input('n').value).toBe('李明');
+  });
+
+  it('reports whether fresh fields were sent (D2)', async () => {
+    document.body.innerHTML = '<label>姓名<input name="n"></label>';
+    const { session } = setup(fillByLabel({ 姓名: '李明' }));
+    await expect(session.run()).resolves.toBe(true);
+    await expect(session.run()).resolves.toBe(false);
+  });
+
+  it('queues exactly one follow-up run when called while busy (D3)', async () => {
+    document.body.innerHTML = '<label>姓名<input name="n"></label>';
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let calls = 0;
+    const overlay = createOverlay(document, () => {});
+    const requestPlan = vi.fn(async (fields: FieldDescriptor[]): Promise<PlanResponse> => {
+      calls += 1;
+      if (calls === 1) {
+        await gate;
+        return { status: 'locked' };
+      }
+      return fillByLabel({ 姓名: '李明' })(fields);
+    });
+    const session = createAutofillSession({ doc: document, requestPlan, overlay });
+    const first = session.run();
+    await expect(session.run()).resolves.toBe(false);
+    await expect(session.run()).resolves.toBe(false);
+    release();
+    await first;
+    expect(requestPlan).toHaveBeenCalledTimes(2);
+    expect(input('n').value).toBe('李明');
+  });
+
+  it('does not mark unmatched fields that already have a value (D4)', async () => {
+    document.body.innerHTML = '<label>奇怪<input name="x" value="预填"></label>';
+    const { session, overlay } = setup(fillByLabel({}));
+    await session.run();
+    expect(input('x').dataset.resumesub).toBeUndefined();
+    expect(overlay.text()).toContain('未填 0');
+  });
+
+  it('cycles through unfilled fields and drops ones the user filled (D4)', async () => {
+    document.body.innerHTML = '<label>甲<input name="a"></label><label>乙<input name="b"></label><label>丙<input name="c"></label>';
+    const { session, overlay } = setup(fillByLabel({}));
+    await session.run();
+    session.nextUnfilled();
+    expect(document.activeElement).toBe(input('a'));
+    input('b').value = '用户填写';
+    session.nextUnfilled();
+    expect(document.activeElement).toBe(input('c'));
+    expect(input('b').dataset.resumesub).toBeUndefined();
+    expect(input('b').style.getPropertyValue('outline')).toBe('');
+    expect(overlay.text()).toContain('未填 2');
+    session.nextUnfilled();
+    expect(document.activeElement).toBe(input('a'));
+  });
+});
