@@ -179,6 +179,14 @@ describe('formatDate placeholders (A5)', () => {
     expect(formatDate('2000-01-02', f(placeholder), false)).toBe(expected);
   });
 
+  it('ignores words that merely contain format letters on datepickers', () => {
+    const picker = (placeholder: string) => desc('s', '开始时间', { kind: 'datepicker', placeholder });
+    expect(formatDate('2025-09', picker('Summary'), false)).toBe('2025-09');
+    expect(formatDate('2025-09', picker('Daddy yy'), false)).toBe('2025-09');
+    expect(formatDate('2025-09', picker('YYYY/MM'), false)).toBe('2025/09');
+    expect(formatDate('2025-09', picker('如2020年1月'), false)).toBe('2025年09月');
+  });
+
   it('keeps the birth date day on text fields', () => {
     const base = data();
     const withBirth = { ...base, profile: { ...base.profile, basic: { ...base.profile.basic, birthDate: '2000-01-02' } } };

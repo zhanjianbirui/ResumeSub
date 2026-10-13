@@ -3,7 +3,9 @@ import { resolveLabel, sectionOf } from './label';
 import { radioGroup, radioGroupLabel } from './radio';
 import { createRepeatCache, repeatIndexOf } from './repeat';
 import { fnv1a } from './signature';
-import { ARIA_TRIGGER_SELECTOR, comboboxRoot, isDatePicker, pickerLabel } from './widgets';
+import {
+  ARIA_TRIGGER_SELECTOR, comboboxRoot, inPickerPanel, isDatePicker, isDisabledWidget, pickerLabel, pickerRoot,
+} from './widgets';
 import { isFileReachable, isVisible, layoutAvailable } from './visibility';
 
 export interface ScannedField {
@@ -79,15 +81,18 @@ interface Widget {
 
 /** 自定义下拉框或日期选择器；不是这两类时返回 null，由普通控件逻辑处理。 */
 function widgetOf(el: HTMLElement, layout: boolean, seenRoots: Set<HTMLElement>): Widget | 'skip' | null {
+  if (inPickerPanel(el)) return 'skip';
   const root = comboboxRoot(el);
   if (root) {
-    if (seenRoots.has(root) || !isVisible(root, layout)) return 'skip';
+    if (seenRoots.has(root)) return 'skip';
     seenRoots.add(root);
+    if (isDisabledWidget(root) || !isVisible(root, layout)) return 'skip';
     return { kind: 'combobox', element: root, draft: describe(root, 'combobox', resolveLabel(root) || resolveLabel(el)) };
   }
   if (isDatePicker(el)) {
     const input = el as HTMLInputElement;
-    if (input.disabled || !isVisible(el, layout)) return 'skip';
+    const picker = pickerRoot(el);
+    if (input.disabled || (picker && isDisabledWidget(picker)) || !isVisible(el, layout)) return 'skip';
     return { kind: 'datepicker', element: el, draft: describe(el, 'datepicker', pickerLabel(input, resolveLabel(el))) };
   }
   return null;
@@ -115,7 +120,7 @@ export function scanFields(root: ParentNode): ScannedField[] {
     const widget = found ?? ordinaryOf(el, layout, seenRadios);
     if (!widget) continue;
     const { draft } = widget;
-    const repeatIndex = repeatIndexOf(el, draft.label, repeatCache);
+    const repeatIndex = repeatIndexOf(widget.element, draft.label, repeatCache);
     const base = fnv1a(`${draft.label}|${draft.name}|${draft.id}|${draft.section}|${repeatIndex}`);
     const occurrence = counts.get(base) ?? 0;
     counts.set(base, occurrence + 1);

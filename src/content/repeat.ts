@@ -54,8 +54,10 @@ function peersOf(node: Element, cache: RepeatCache): Element[] {
 /** 区块里有没有与 el 等价的控件：同标签同类型，且 name（去下标后）相同或区块文字里出现 el 的标签。 */
 function hasEquivalent(peer: Element, el: HTMLElement, label: string, cache: RepeatCache): boolean {
   if (peer.contains(el)) return true;
-  const name = normalizedName(el);
-  const sameKind = visibleControls(peer, cache).filter((c) => typeOf(c) === typeOf(el));
+  // 自定义下拉框以根节点上报：用它里面的第一个控件来比较类型和 name。
+  const probe = el.matches(CONTROLS) ? el : el.querySelector<HTMLElement>(CONTROLS) ?? el;
+  const name = normalizedName(probe);
+  const sameKind = visibleControls(peer, cache).filter((c) => typeOf(c) === typeOf(probe));
   if (sameKind.length === 0) return false;
   if (name && sameKind.some((c) => normalizedName(c) === name)) return true;
   return label !== '' && blockText(peer, cache).includes(label);

@@ -1,20 +1,12 @@
-import { activeAdapter } from './adapters';
-import { clean } from './text';
+import { ADAPTERS, activeAdapter } from './adapters';
+import { clean, textOutsideControls } from './text';
 import { formItemLabel } from './widgets';
 
-const CONTROLS = 'input, select, textarea, button, option';
 const MAX_LABEL = 60;
 const HEADING = ':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > legend, :scope > [role="heading"], :scope > [class*="title"]';
 const MAX_SECTION_DEPTH = 8;
 
-export { clean };
-
-/** 祖先节点去掉所有表单控件后剩下的文字（用来处理"span + input"这种没有 label 的结构）。 */
-export function textOutsideControls(ancestor: Element): string {
-  const copy = ancestor.cloneNode(true) as Element;
-  copy.querySelectorAll(CONTROLS).forEach((node) => node.remove());
-  return clean(copy.textContent);
-}
+export { clean, textOutsideControls };
 
 export function controlCount(ancestor: Element): number {
   return ancestor.querySelectorAll('input:not([type="hidden"]), select, textarea').length;
@@ -32,7 +24,8 @@ function nearbyText(el: HTMLElement): string {
 }
 
 export function resolveLabel(el: HTMLElement): string {
-  const adapted = activeAdapter(el.ownerDocument.location?.href ?? '')?.labelFor?.(el);
+  // 没有注册任何适配器时不必解析 URL。
+  const adapted = ADAPTERS.length > 0 ? activeAdapter(el.ownerDocument.location?.href ?? '')?.labelFor?.(el) : null;
   if (adapted) return adapted;
   const labels = (el as HTMLInputElement).labels;
   const direct = labels && labels.length > 0 ? textOutsideControls(labels[0] as Element) : '';

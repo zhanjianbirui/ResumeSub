@@ -72,11 +72,14 @@ function renderDate(value: string, placeholder: string): string {
   return parts.map((p) => pieces[p]).join(format.sep);
 }
 
+/** 只认独立的格式记号（YYYY、MM 等）或「年」，避免 Summary 这类单词误判。 */
+const DATE_TOKENS = /\b(?:yyyy|yy|mm|dd)\b|年/i;
+
 export function formatDate(value: string, field: FieldDescriptor, english: boolean): string | null {
   if (!value) return null;
   if (field.kind === 'datepicker') {
     if (value === 'present') return null;
-    return /y{2,4}|m{2}|年/i.test(field.placeholder) ? renderDate(value, field.placeholder) : value;
+    return DATE_TOKENS.test(field.placeholder) ? renderDate(value, field.placeholder) : value;
   }
   if (value === 'present') return field.kind === 'month' || field.kind === 'date' ? null : english ? 'Present' : '至今';
   if (field.kind === 'month') return value.slice(0, 7);
