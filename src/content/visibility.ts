@@ -26,7 +26,9 @@ function cssVisible(el: HTMLElement): boolean {
 function onScreen(el: HTMLElement): boolean {
   const rect = el.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return false;
-  return rect.right >= 0 && rect.bottom >= 0;
+  const view = el.ownerDocument.defaultView;
+  // 用文档坐标：页面往下滚过的控件视口坐标为负，但用户滚回去就能看到，不算屏幕外。
+  return rect.right + (view?.scrollX ?? 0) >= 0 && rect.bottom + (view?.scrollY ?? 0) >= 0;
 }
 
 /** 用户看得见的控件：未隐藏、非透明，并且（有布局时）有尺寸且不在屏幕左侧或上方之外。 */
@@ -36,12 +38,14 @@ export function isVisible(el: HTMLElement, layout: boolean): boolean {
   return !layout || onScreen(el);
 }
 
-const UPLOAD_CONTAINER = 'label, button, [role="button"], [class*="upload"]';
+const BUTTON_LIKE = 'button, [role="button"]';
 
-/** 上传框通常隐藏在按钮或 label 后面：只要它的 label 或外层上传按钮可见就算可用。 */
+/** 上传框通常隐藏在按钮或 label 后面：只有关联的 label（含外层 label）或直接父级按钮可见时才算可用。 */
 export function isFileReachable(el: HTMLInputElement, layout: boolean): boolean {
   if (isVisible(el, layout)) return true;
-  const container = el.parentElement?.closest<HTMLElement>(UPLOAD_CONTAINER);
-  const candidates = [...Array.from(el.labels ?? []), ...(container ? [container] : [])];
+  const wrapping = el.parentElement?.closest<HTMLElement>('label');
+  const parent = el.parentElement;
+  const button = parent?.matches(BUTTON_LIKE) ? parent : null;
+  const candidates = [...Array.from(el.labels ?? []), ...(wrapping ? [wrapping] : []), ...(button ? [button] : [])];
   return candidates.some((c) => isVisible(c, layout));
 }
