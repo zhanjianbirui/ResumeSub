@@ -12,6 +12,8 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "mammoth": "^1.13.0",
+    "pdfjs-dist": "^6.4.299",
     "preact": "^11.0.1",
     "valibot": "^1.5.0"
   },
