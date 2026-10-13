@@ -17,6 +17,8 @@ const TOKEN = /[a-z0-9'’]+|[㐀-鿿]+/g;
 const keyOf = (text: string) => text.toLowerCase().replace(/[\s'’.\-_()（）]/g, '');
 const tokensOf = (text: string) => (text.toLowerCase().match(TOKEN) ?? []).map(keyOf);
 const MIN_LOOSE = 2;
+/** 包含式匹配后剩下的修饰词表示"更高/以上"的另一档（博士后、研究生及以上），不能当成同一学历。 */
+const QUALIFIER = /后|以上/;
 
 export function synonymsFor(path: FieldPath, raw: string): string[] {
   if (path === 'basic.gender' || path === 'education.degree') return [...(SYNONYMS[raw] ?? [raw])];
@@ -27,7 +29,8 @@ export function synonymsFor(path: FieldPath, raw: string): string[] {
 function looseHit(label: string, key: string): boolean {
   if (key.length < MIN_LOOSE || label.length < MIN_LOOSE) return false;
   if (!CJK.test(label) || !CJK.test(key)) return false;
-  return label.includes(key) || key.includes(label);
+  if (label.includes(key)) return !QUALIFIER.test(label.replace(key, ''));
+  return key.includes(label);
 }
 
 /**

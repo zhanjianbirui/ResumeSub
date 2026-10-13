@@ -34,7 +34,7 @@ export const GLOBAL_RULES: readonly Rule[] = [
   ['basic.email', /邮箱|e-?mail|电子邮件/i],
   ['basic.phone', /手机|电话|联系方式|phone|mobile|\btel\b/i],
   ['basic.idType', /证件类型|id ?type|document type/i],
-  ['basic.idNumber', /身份证|证件号|\bid ?(?:no|number|card)\b|passport/i, /有效期|expir|issue|签发|地址|address|类型|type/i],
+  ['basic.idNumber', /身份证|证件号|护照号|\bid ?(?:no|number|card)\b|passport/i, /有效期|expir|issue|签发|地址|address|类型|type/i],
   ['basic.gender', /性别|gender|\bsex\b/i],
   ['basic.hometown', /出生地|place of birth|birthplace/i],
   ['basic.birthDate', /出生|生日|birth|\bdob\b/i],

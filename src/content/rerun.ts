@@ -6,12 +6,16 @@ export interface RerunOptions {
   /** 同一 URL 下最多计入预算的 run 次数（只统计真正发送了新字段的 run）。 */
   maxRuns: number;
   getUrl(): string;
+  /** 预算在本次 run 后耗尽时调用（只调用一次，直到 URL 变化重置预算）。 */
+  onExhausted?(): void;
 }
 
 export interface RerunScheduler {
   notify(): void;
   runNow(): Promise<void>;
   stop(): void;
+  /** 当前 URL 下的重扫预算是否已用完。 */
+  exhausted(): boolean;
 }
 
 const CONTROL_SELECTOR = 'input, select, textarea';
@@ -48,7 +52,9 @@ export function createRerunScheduler(options: RerunOptions): RerunScheduler {
   async function runNow(): Promise<void> {
     clearTimers();
     if (!refreshBudget()) return;
-    if (await options.run()) runs += 1;
+    if (!(await options.run())) return;
+    runs += 1;
+    if (runs >= options.maxRuns) options.onExhausted?.();
   }
 
   const fire = () => void runNow();
@@ -60,5 +66,5 @@ export function createRerunScheduler(options: RerunOptions): RerunScheduler {
     maxTimer ??= setTimeout(fire, options.maxWaitMs);
   }
 
-  return { notify, runNow, stop: clearTimers };
+  return { notify, runNow, stop: clearTimers, exhausted: () => runs >= options.maxRuns };
 }

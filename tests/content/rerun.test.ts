@@ -67,6 +67,15 @@ describe('createRerunScheduler (D2)', () => {
     expect(run).toHaveBeenCalledTimes(2);
   });
 
+  it('reports exhaustion once the budget is spent (R4)', async () => {
+    const { scheduler } = setup(true, 2);
+    expect(scheduler.exhausted()).toBe(false);
+    await scheduler.runNow();
+    expect(scheduler.exhausted()).toBe(false);
+    await scheduler.runNow();
+    expect(scheduler.exhausted()).toBe(true);
+  });
+
   it('stop cancels pending runs', async () => {
     const { run, scheduler } = setup();
     scheduler.notify();

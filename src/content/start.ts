@@ -29,19 +29,21 @@ export interface StartDeps {
 export async function startAutofill(deps: StartDeps): Promise<() => void> {
   deps.onRetry(() => void deps.session.run());
   const root = deps.doc.body ?? deps.doc.documentElement;
+  const observer = new MutationObserver((records) => {
+    if (addsFormControls(records)) scheduler.notify();
+  });
   const scheduler = createRerunScheduler({
     run: () => deps.session.run(),
     debounceMs: RERUN_DEBOUNCE_MS,
     maxWaitMs: RERUN_MAX_WAIT_MS,
     maxRuns: MAX_RUNS,
     getUrl: deps.getUrl,
+    // 预算用完后不再需要监听 DOM 变动（SPA 换页后不重新挂载，手动重试仍可用）。
+    onExhausted: () => observer.disconnect(),
   });
   await waitForStable(root);
   await scheduler.runNow();
-  const observer = new MutationObserver((records) => {
-    if (addsFormControls(records)) scheduler.notify();
-  });
-  observer.observe(root, { childList: true, subtree: true });
+  if (!scheduler.exhausted()) observer.observe(root, { childList: true, subtree: true });
   return () => {
     observer.disconnect();
     scheduler.stop();

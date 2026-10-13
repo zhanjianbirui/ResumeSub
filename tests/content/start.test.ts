@@ -57,6 +57,29 @@ describe('startAutofill', () => {
   });
 });
 
+describe('startAutofill rerun budget (R4)', () => {
+  it('disconnects the observer once the rerun budget is exhausted', async () => {
+    const disconnect = vi.spyOn(MutationObserver.prototype, 'disconnect');
+    const d = deps();
+    const started = startAutofill(d);
+    await vi.advanceTimersByTimeAsync(600);
+    const stop = await started;
+    disconnect.mockClear(); // waitForStable 自己的观察者在首轮前已断开
+    for (let i = 0; i < 19; i += 1) {
+      expect(disconnect).not.toHaveBeenCalled();
+      document.body.appendChild(document.createElement('input'));
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    expect(d.session.run).toHaveBeenCalledTimes(20);
+    expect(disconnect).toHaveBeenCalled();
+    document.body.appendChild(document.createElement('input'));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(d.session.run).toHaveBeenCalledTimes(20);
+    stop();
+    disconnect.mockRestore();
+  });
+});
+
 describe('isCrossOriginFrame (D6)', () => {
   const win = (top: boolean, origin: string, ancestors?: string[]) => {
     const self = {} as Window;
