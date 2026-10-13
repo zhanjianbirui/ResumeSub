@@ -101,4 +101,13 @@ describe('adapters and dedupe (A6)', () => {
     const combos = scanFields(document).filter((f) => f.descriptor.kind === 'combobox');
     expect(combos.map((f) => f.descriptor.repeatIndex)).toEqual([0, 1]);
   });
+
+  it('computes repeatIndex for Ant selects whose search input is transparent', () => {
+    const select = '<div class="ant-select ant-select-single"><input type="search" role="combobox" readonly style="opacity:0"><span class="ant-select-selection-placeholder">请选择</span></div>';
+    const block = (n: number) => `<div class="edu"><div class="form-item"><label>学校</label><input name="s${n}"></div>
+      <div class="ant-form-item"><div class="ant-form-item-label"><label>学历</label></div>${select}</div><div class="form-item"><label>专业</label><input name="m${n}"></div></div>`;
+    document.body.innerHTML = `<section>${block(0)}${block(1)}</section>`;
+    const combos = scanFields(document).filter((f) => f.descriptor.kind === 'combobox');
+    expect(combos.map((f) => f.descriptor.repeatIndex)).toEqual([0, 1]);
+  });
 });

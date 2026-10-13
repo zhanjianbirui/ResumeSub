@@ -4,7 +4,8 @@ import { formItemLabel } from './widgets';
 
 const MAX_LABEL = 60;
 const HEADING = ':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > legend, :scope > [role="heading"], :scope > [class*="title"]';
-const MAX_SECTION_DEPTH = 8;
+/** Ant Design 的日期框到区块标题之间可能隔 9 层以上的包装。 */
+const MAX_SECTION_DEPTH = 14;
 
 export { clean, textOutsideControls };
 
@@ -44,14 +45,21 @@ export function resolveLabel(el: HTMLElement): string {
   return clean(el.getAttribute('placeholder'));
 }
 
+const precedes = (heading: Element, el: Element) =>
+  !heading.contains(el) && (heading.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+/** 每一层祖先取位于字段之前、离字段最近的标题（同一表单里多个 h3 并列时取字段所在的那一段）。 */
+function headingIn(node: Element, el: HTMLElement): string {
+  const headings = Array.from(node.querySelectorAll(HEADING)).filter((h) => precedes(h, el));
+  const text = clean(headings[headings.length - 1]?.textContent);
+  return text.length <= MAX_LABEL ? text : '';
+}
+
 export function sectionOf(el: HTMLElement): string {
   let node: Element | null = el.parentElement;
   for (let depth = 0; node && depth < MAX_SECTION_DEPTH; depth++, node = node.parentElement) {
-    const heading = node.querySelector(HEADING);
-    if (heading && !heading.contains(el)) {
-      const text = clean(heading.textContent);
-      if (text && text.length <= MAX_LABEL) return text;
-    }
+    const text = headingIn(node, el);
+    if (text) return text;
   }
   return '';
 }

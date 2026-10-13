@@ -42,8 +42,9 @@ export async function startAutofill(deps: StartDeps): Promise<() => void> {
     onExhausted: () => observer.disconnect(),
   });
   await waitForStable(root);
+  // 首轮之前就开始监听：首轮里点击"添加"插入的新区块也要触发重扫。
+  observer.observe(root, { childList: true, subtree: true });
   await scheduler.runNow();
-  if (!scheduler.exhausted()) observer.observe(root, { childList: true, subtree: true });
   return () => {
     observer.disconnect();
     scheduler.stop();

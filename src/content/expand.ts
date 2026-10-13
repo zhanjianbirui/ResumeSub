@@ -1,12 +1,16 @@
 import type { EntryGroup, FillInstruction } from '@/shared/autofill-types';
 import type { ScannedField } from './scan';
+import { repeatBlockOf } from './repeat';
 import { clean } from './text';
 import { isVisible, layoutAvailable } from './visibility';
 
 const ADD = /添加|新增|增加|\badd\b|^\+/i;
 const NOT_ADD = /删除|移除|remove|delete|附件|attachment|上传|upload|保存|提交|下一步|submit|next/i;
 const CLICKABLE = 'button, a, [role="button"], [class*="add"]';
-const MAX_DEPTH = 6;
+/** 没有识别出重复区块时，从字段往上找的层数（Ant Form.List：字段到按钮所在容器约 7-9 层）。 */
+const MAX_DEPTH = 12;
+/** 识别出重复区块时，只在区块的父级及以上 4 层里找。 */
+const BLOCK_LEVELS = 4;
 const MAX_ADD_TEXT = 20;
 const GROUPS: readonly EntryGroup[] = ['education', 'experience', 'projects'];
 export const MAX_EXPAND_CLICKS = 10;
@@ -33,11 +37,16 @@ function looksLikeAdd(el: HTMLElement, layout: boolean): boolean {
   return text.length > 0 && text.length <= MAX_ADD_TEXT && ADD.test(text) && !NOT_ADD.test(text);
 }
 
-/** 从 anchor 往上最多 6 层，每层找第一个可见的"添加"类按钮（排除删除、上传、提交、下一步）。 */
-export function findAddButton(anchor: HTMLElement): HTMLElement | null {
+/**
+ * 找"添加"类按钮（排除删除、上传、提交、下一步）：先定位 anchor 所在的重复区块，从区块的父级往上找；
+ * 页面上只有一个区块时从 anchor 往上找。每层取第一个可见的候选。
+ */
+export function findAddButton(anchor: HTMLElement, _group?: EntryGroup): HTMLElement | null {
   const layout = layoutAvailable(anchor.ownerDocument);
-  let node: HTMLElement | null = anchor.parentElement;
-  for (let depth = 0; node && depth < MAX_DEPTH; depth++, node = node.parentElement) {
+  const block = repeatBlockOf(anchor);
+  const limit = block ? BLOCK_LEVELS : MAX_DEPTH;
+  let node: HTMLElement | null = (block ?? anchor).parentElement;
+  for (let depth = 0; node && depth < limit; depth++, node = node.parentElement) {
     const hit = [...node.querySelectorAll<HTMLElement>(CLICKABLE)].find((el) => looksLikeAdd(el, layout));
     if (hit) return hit;
   }
@@ -85,7 +94,7 @@ export function createExpander() {
     seen = [...seen.filter((f) => f.element.isConnected), ...grouped];
     let clicked = 0;
     for (const plan of planExpansion(seen, counts, state)) {
-      const button = findAddButton(plan.anchor);
+      const button = findAddButton(plan.anchor, plan.group);
       if (!button) continue;
       button.click();
       clicked += 1;
