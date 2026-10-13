@@ -2,8 +2,8 @@ import type { FieldOption } from '@/shared/autofill-types';
 import type { FieldPath } from './rules';
 
 const SYNONYMS: Readonly<Record<string, readonly string[]>> = {
-  male: ['男', 'male', 'man', '先生', 'm'],
-  female: ['女', 'female', 'woman', '女士', 'f'],
+  male: ['男', 'male', 'man', '先生', 'm', '男性'],
+  female: ['女', 'female', 'woman', '女士', 'f', '女性'],
   highschool: ['高中', 'high school', 'secondary'],
   associate: ['大专', '专科', 'associate'],
   bachelor: ['本科', '学士', 'bachelor', "bachelor's", 'undergraduate', 'bsc'],
@@ -12,7 +12,10 @@ const SYNONYMS: Readonly<Record<string, readonly string[]>> = {
 };
 
 const PLACEHOLDER = /^(?:请选择|select|choose|--|-|—)/i;
+const CJK = /[㐀-鿿]/;
+const TOKEN = /[a-z0-9'’]+|[㐀-鿿]+/g;
 const keyOf = (text: string) => text.toLowerCase().replace(/[\s'’.\-_()（）]/g, '');
+const tokensOf = (text: string) => (text.toLowerCase().match(TOKEN) ?? []).map(keyOf);
 const MIN_LOOSE = 2;
 
 export function synonymsFor(path: FieldPath, raw: string): string[] {
@@ -20,16 +23,25 @@ export function synonymsFor(path: FieldPath, raw: string): string[] {
   return [raw];
 }
 
-/** 先精确匹配（选项文字或 value），再做包含式模糊匹配；少于 2 个字符的词只做精确匹配。 */
+/** 中文选项允许包含式匹配（"硕士研究生"包含"硕士"）；拉丁文字只允许整词匹配，避免 "Female" 包含 "male"。 */
+function looseHit(label: string, key: string): boolean {
+  if (key.length < MIN_LOOSE || label.length < MIN_LOOSE) return false;
+  if (!CJK.test(label) || !CJK.test(key)) return false;
+  return label.includes(key) || key.includes(label);
+}
+
+/**
+ * 依次尝试：整段精确匹配（选项文字或 value）→ 选项中的某个词精确匹配 → 中文包含式匹配。
+ * 少于 2 个字符的词只参与整段精确匹配。
+ */
 export function chooseOption(options: readonly FieldOption[], wanted: readonly string[]): string | null {
   const candidates = options.filter((o) => o.value !== '' && !PLACEHOLDER.test(o.label.trim()));
   const keys = wanted.map(keyOf).filter(Boolean);
   const exact = candidates.find((o) => keys.includes(keyOf(o.label)) || keys.includes(keyOf(o.value)));
   if (exact) return exact.value;
-  const loose = candidates.find((o) => {
-    const label = keyOf(o.label);
-    return label.length >= MIN_LOOSE
-      && keys.some((k) => k.length >= MIN_LOOSE && (label.includes(k) || k.includes(label)));
-  });
+  const longKeys = keys.filter((k) => k.length >= MIN_LOOSE);
+  const token = candidates.find((o) => tokensOf(o.label).some((t) => longKeys.includes(t)));
+  if (token) return token.value;
+  const loose = candidates.find((o) => longKeys.some((k) => looseHit(keyOf(o.label), k)));
   return loose?.value ?? null;
 }

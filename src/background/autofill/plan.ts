@@ -24,13 +24,16 @@ export function planFills(fields: readonly FieldDescriptor[], data: VaultData): 
   const customKeys = Object.keys(data.profile.custom);
   const counters = new Map<FieldPath, number>();
   const fills: FillInstruction[] = [];
+  let resumeUsed = false; // 简历文件每次最多填一个上传框
   for (const field of fields) {
     const path = matchField(field, customKeys);
-    if (!path) continue;
+    if (!path || (path === 'resume.file' && resumeUsed)) continue;
     const index = counters.get(path) ?? 0;
     counters.set(path, index + 1);
     const fill = buildFill(field, path, index, data);
-    if (fill) fills.push(fill);
+    if (!fill) continue;
+    fills.push(fill);
+    if (path === 'resume.file') resumeUsed = true;
   }
   return fills;
 }

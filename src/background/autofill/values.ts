@@ -18,11 +18,58 @@ export function splitName(basic: Basic, english: boolean): { first: string; last
   return { last: surname, first: name.slice(surname.length) };
 }
 
-function dateStyle(placeholder: string): (y: string, m: string) => string {
-  if (/年/.test(placeholder)) return (y, m) => `${y}年${m}月`;
-  if (/\//.test(placeholder)) return (y, m) => `${y}/${m}`;
-  if (/\d\.\d|\.mm|\./i.test(placeholder)) return (y, m) => `${y}.${m}`;
-  return (y, m) => `${y}-${m}`;
+type DatePart = 'y' | 'm' | 'd';
+
+interface DateFormat {
+  order: readonly DatePart[];
+  sep: string;
+  cjk: boolean;
+}
+
+const ISO: DateFormat = { order: ['y', 'm', 'd'], sep: '-', cjk: false };
+const SEPARATOR = /^[-/.]$/;
+const CJK_SUFFIX: Readonly<Record<DatePart, string>> = { y: '年', m: '月', d: '日' };
+
+/** 占位符里写了 YYYY/MM/DD 时，按其顺序和前两个记号之间的字符确定格式。 */
+function tokenFormat(placeholder: string): DateFormat | null {
+  const tokens = [...placeholder.matchAll(/yyyy|mm|dd/gi)];
+  if (!tokens.some((t) => t[0].toLowerCase() === 'yyyy')) return null;
+  const order = [...new Set(tokens.map((t) => t[0].charAt(0).toLowerCase() as DatePart))];
+  const [first, second] = tokens;
+  const between = first && second ? placeholder.slice(first.index + first[0].length, second.index).trim() : '';
+  return { order, sep: SEPARATOR.test(between) ? between : '-', cjk: /年/.test(placeholder) };
+}
+
+/** 占位符是示例日期（如 "e.g. 2020-01"、"09/2020"）时，只认数字之间的分隔符。 */
+function exampleFormat(placeholder: string): DateFormat | null {
+  const yearFirst = /\d{4}([-/.])\d{1,2}/.exec(placeholder);
+  if (yearFirst) return { order: ['y', 'm', 'd'], sep: yearFirst[1] ?? '-', cjk: false };
+  const yearLast = /\d{1,2}([-/.])\d{4}/.exec(placeholder);
+  if (yearLast) return { order: ['m', 'y'], sep: yearLast[1] ?? '-', cjk: false };
+  return null;
+}
+
+function detectFormat(placeholder: string): DateFormat {
+  const format = tokenFormat(placeholder);
+  if (format) return format;
+  if (/年/.test(placeholder)) return { ...ISO, cjk: true };
+  return exampleFormat(placeholder) ?? ISO;
+}
+
+/** 只要求年份时只给年份；值里有"日"时保留，即便占位符只写到月。 */
+function partsFor(format: DateFormat, hasDay: boolean): readonly DatePart[] {
+  if (format.order.length === 1) return format.order;
+  if (!hasDay) return format.order.filter((p) => p !== 'd');
+  return format.order.includes('d') ? format.order : ISO.order;
+}
+
+function renderDate(value: string, placeholder: string): string {
+  const [y = '', m = '', d = ''] = value.split('-');
+  const format = detectFormat(placeholder);
+  const pieces: Readonly<Record<DatePart, string>> = { y, m, d };
+  const parts = partsFor(format, d !== '');
+  if (format.cjk) return parts.map((p) => `${pieces[p]}${CJK_SUFFIX[p]}`).join('');
+  return parts.map((p) => pieces[p]).join(format.sep);
 }
 
 export function formatDate(value: string, field: FieldDescriptor, english: boolean): string | null {
@@ -30,8 +77,7 @@ export function formatDate(value: string, field: FieldDescriptor, english: boole
   if (value === 'present') return field.kind === 'month' || field.kind === 'date' ? null : english ? 'Present' : '至今';
   if (field.kind === 'month') return value.slice(0, 7);
   if (field.kind === 'date') return value.length === 7 ? `${value}-01` : value;
-  const [y = '', m = ''] = value.split('-');
-  return dateStyle(field.placeholder)(y, m);
+  return renderDate(value, field.placeholder);
 }
 
 const DISPLAY: Readonly<Record<string, readonly [string, string]>> = {

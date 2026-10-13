@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { matchField } from '@/background/autofill/match';
+import { SKIP } from '@/background/autofill/rules';
 import type { FieldDescriptor } from '@/shared/autofill-types';
 
 const desc = (label: string, extra: Partial<FieldDescriptor> = {}): FieldDescriptor => ({
@@ -64,5 +65,67 @@ describe('matchField', () => {
     expect(matchField(desc('上传简历', { kind: 'file' }), [])).toBe('resume.file');
     expect(matchField(desc('Resume/CV', { kind: 'file' }), [])).toBe('resume.file');
     expect(matchField(desc('证件照', { kind: 'file' }), [])).toBeNull();
+  });
+});
+
+describe('tightened rules (A1)', () => {
+  it.each([
+    ['护照有效期'], ['Passport expiry date'], ['身份证地址'], ['证件签发机关'], ['ID card issue date'],
+  ])('%s is not an id number', (label) => {
+    expect(matchField(desc(label), [])).not.toBe('basic.idNumber');
+  });
+
+  it.each([
+    ['Android number', null],
+    ['ID Number', 'basic.idNumber'],
+    ['Passport No.', 'basic.idNumber'],
+    ['出生地', 'basic.hometown'],
+    ['Place of Birth', 'basic.hometown'],
+    ['Birthplace', 'basic.hometown'],
+    ['出生日期', 'basic.birthDate'],
+    ['专业排名', 'education.rank'],
+    ['Are you available to work weekends?', null],
+    ['Date available from', 'preferences.availableFrom'],
+    ['Notice period', 'preferences.availableFrom'],
+    ['公司地址', null],
+    ['Employer address', null],
+    ['公司性质', null],
+    ['公司规模', null],
+    ['所属行业', null],
+    ['单位电话', null],
+    ['Which position are you applying for', null],
+    ['Position applied for', null],
+    ['联系人电话', null],
+    ['Parent/Guardian email', null],
+    ['Contact person phone', null],
+    ['姓 名', 'basic.name'],
+    ['出 生 日 期', 'basic.birthDate'],
+  ])('%s → %s', (label, path) => {
+    expect(matchField(desc(label), [])).toBe(path);
+  });
+
+  it('does not treat "preference" as a reference (A2)', () => {
+    expect(SKIP.test('Location preference')).toBe(false);
+    expect(SKIP.test('Reference name')).toBe(true);
+    expect(matchField(desc('Location preference', { section: 'Work Experience' }), [])).toBe('experience.location');
+  });
+});
+
+describe('file inputs (A3)', () => {
+  it.each([
+    ['上传简历', 'resume.file'],
+    ['简历附件', 'resume.file'],
+    ['上传附件', null],
+    ['Attachment', null],
+    ['Cover letter', null],
+    ['Resume cover letter', null],
+    ['成绩单', null],
+    ['Transcript', null],
+    ['证书扫描件（简历补充）', null],
+    ['个人照片', null],
+    ['推荐人简历', null],
+    ['Reference letter', null],
+  ])('%s → %s', (label, path) => {
+    expect(matchField(desc(label, { kind: 'file' }), [])).toBe(path);
   });
 });

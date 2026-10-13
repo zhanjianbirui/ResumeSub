@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseOption } from '@/background/autofill/options';
+import { chooseOption, synonymsFor } from '@/background/autofill/options';
 import { planFills } from '@/background/autofill/plan';
 import { formatDate, splitName } from '@/background/autofill/values';
 import type { FieldDescriptor } from '@/shared/autofill-types';
@@ -112,5 +112,66 @@ describe('planFills', () => {
 
   it('skips the resume file when none is stored', () => {
     expect(planFills([desc('f', '上传简历', { kind: 'file' })], emptyVaultData())).toEqual([]);
+  });
+});
+
+describe('resume file once per plan (A3)', () => {
+  it('attaches the resume to the first matching file input only', () => {
+    const fills = planFills([
+      desc('f1', '上传简历', { kind: 'file' }),
+      desc('f2', 'Resume/CV', { kind: 'file' }),
+    ], data());
+    expect(fills.map((f) => f.signature)).toEqual(['f1']);
+  });
+});
+
+describe('chooseOption (A4)', () => {
+  const male = ['男', 'male', 'man', '先生', 'm', '男性'];
+  it('requires exact matches for Latin labels', () => {
+    expect(chooseOption([{ value: 'F', label: 'Female' }, { value: 'M', label: 'Male' }], male)).toBe('M');
+    expect(chooseOption([{ value: '1', label: 'Mastercard' }], ['master'])).toBeNull();
+    expect(chooseOption([{ value: '1', label: 'Bachelor of Science' }], ['bachelor'])).toBe('1');
+  });
+
+  it('never picks Female (女) for male', () => {
+    const options = [{ value: '1', label: 'Female (女)' }, { value: '2', label: 'Male (男)' }];
+    expect(chooseOption(options, male)).toBe('2');
+    expect(chooseOption(options, ['女', 'female', 'woman', '女士', 'f', '女性'])).toBe('1');
+  });
+
+  it('maps 男性/女性 options through gender synonyms', () => {
+    const options = [{ value: '1', label: '男性' }, { value: '2', label: '女性' }];
+    expect(chooseOption(options, synonymsFor('basic.gender', 'male'))).toBe('1');
+    expect(chooseOption(options, synonymsFor('basic.gender', 'female'))).toBe('2');
+  });
+});
+
+describe('formatDate placeholders (A5)', () => {
+  const f = (placeholder: string) => desc('s', '开始时间', { placeholder });
+  it.each([
+    ['MM/YYYY', '09/2025'],
+    ['YYYY', '2025'],
+    ['e.g. 2020-01', '2025-09'],
+    ['YYYY.MM', '2025.09'],
+    ['YYYY年MM月', '2025年09月'],
+    ['09/2020', '09/2025'],
+  ])('month value with %s → %s', (placeholder, expected) => {
+    expect(formatDate('2025-09', f(placeholder), false)).toBe(expected);
+  });
+
+  it.each([
+    ['', '2000-01-02'],
+    ['YYYY/MM/DD', '2000/01/02'],
+    ['YYYY年MM月DD日', '2000年01月02日'],
+    ['DD/MM/YYYY', '02/01/2000'],
+    ['YYYY', '2000'],
+  ])('full date with %s keeps the day → %s', (placeholder, expected) => {
+    expect(formatDate('2000-01-02', f(placeholder), false)).toBe(expected);
+  });
+
+  it('keeps the birth date day on text fields', () => {
+    const base = data();
+    const withBirth = { ...base, profile: { ...base.profile, basic: { ...base.profile.basic, birthDate: '2000-01-02' } } };
+    expect(planFills([desc('b', '出生日期')], withBirth)).toEqual([{ signature: 'b', value: '2000-01-02' }]);
   });
 });
