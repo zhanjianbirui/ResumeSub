@@ -49,7 +49,7 @@ describe('router', () => {
   const planReq = {
     type: 'autofill.plan',
     url: 'https://jobs.example.com/apply',
-    fields: [{ signature: 'a', kind: 'text', label: '姓名', name: '', id: '', placeholder: '', autocomplete: '', section: '' }],
+    fields: [{ signature: 'a', kind: 'text', label: '姓名', name: '', id: '', placeholder: '', autocomplete: '', section: '', repeatIndex: 0 }],
   };
 
   it('lets content scripts on allowed origins request a plan', async () => {

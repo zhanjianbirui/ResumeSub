@@ -73,6 +73,29 @@ describe('scanFields', () => {
     expect(fields[0]?.descriptor.kind).toBe('textarea');
   });
 
+  it('computes repeatIndex from repeated sibling blocks (B3)', () => {
+    const fields = mount(`
+      <div class="row"><label>最高学历<input name="top"></label></div>
+      <div class="row"><label>邮箱<input name="mail"></label></div>
+      <section><h3>教育经历</h3>
+        <div class="edu-item"><div class="row"><label>学校<input name="s"></label></div><div class="row"><label>专业<input name="m"></label></div></div>
+        <div class="edu-item"><div class="row"><label>学校<input name="s"></label></div><div class="row"><label>专业<input name="m"></label></div></div>
+      </section>
+    `);
+    expect(fields.map((f) => [f.descriptor.name, f.descriptor.repeatIndex])).toEqual([
+      ['top', 0], ['mail', 0], ['s', 0], ['m', 0], ['s', 1], ['m', 1],
+    ]);
+    expect(fields[2]?.descriptor.signature).not.toBe(fields[4]?.descriptor.signature);
+  });
+
+  it('does not treat differently shaped sibling sections as repeats', () => {
+    const fields = mount(`
+      <div class="sec"><h3>基本信息</h3><label>姓名<input name="n"></label></div>
+      <div class="sec"><h3>教育经历</h3><label>学校<input name="s"></label><label>专业<input name="m"></label></div>
+    `);
+    expect(fields.map((f) => f.descriptor.repeatIndex)).toEqual([0, 0, 0]);
+  });
+
   it('fnv1a is stable', () => {
     expect(fnv1a('abc')).toBe(fnv1a('abc'));
     expect(fnv1a('abc')).toMatch(/^[0-9a-f]{8}$/);

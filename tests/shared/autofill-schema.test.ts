@@ -7,7 +7,7 @@ import { PRESET_SITES } from '@/shared/sites';
 
 const field = {
   signature: 'abc-0', kind: 'text', label: '姓名', name: 'name', id: 'n1',
-  placeholder: '', autocomplete: '', section: '基本信息',
+  placeholder: '', autocomplete: '', section: '基本信息', repeatIndex: 0,
 };
 
 describe('autofill schema', () => {
@@ -15,6 +15,15 @@ describe('autofill schema', () => {
     expect(v.safeParse(FieldDescriptorSchema, field).success).toBe(true);
     expect(v.safeParse(FieldDescriptorSchema, { ...field, kind: 'password' }).success).toBe(false);
     expect(v.safeParse(FieldDescriptorSchema, { ...field, label: 'x'.repeat(201) }).success).toBe(false);
+  });
+
+  it('requires an integer repeatIndex between 0 and 50', () => {
+    expect(v.safeParse(FieldDescriptorSchema, { ...field, repeatIndex: 50 }).success).toBe(true);
+    expect(v.safeParse(FieldDescriptorSchema, { ...field, repeatIndex: 51 }).success).toBe(false);
+    expect(v.safeParse(FieldDescriptorSchema, { ...field, repeatIndex: -1 }).success).toBe(false);
+    expect(v.safeParse(FieldDescriptorSchema, { ...field, repeatIndex: 1.5 }).success).toBe(false);
+    const { repeatIndex: _omit, ...missing } = field;
+    expect(v.safeParse(FieldDescriptorSchema, missing).success).toBe(false);
   });
 
   it('bounds the number of fields in autofill.plan', () => {

@@ -19,6 +19,8 @@ export interface FieldDescriptor {
   placeholder: string;
   autocomplete: string;
   section: string;
+  /** 字段位于第几个重复区块（如第 2 段教育经历为 1）；不在重复区块中为 0。 */
+  repeatIndex: number;
   options?: FieldOption[];
 }
 

@@ -7,7 +7,7 @@ import { emptyEducation, emptyExperience, emptyProfile } from '@/shared/schema/p
 import { emptyVaultData, type VaultData } from '@/shared/schema/vault-data';
 
 const desc = (signature: string, label: string, extra: Partial<FieldDescriptor> = {}): FieldDescriptor => ({
-  signature, kind: 'text', label, name: '', id: '', placeholder: '', autocomplete: '', section: '', ...extra,
+  signature, kind: 'text', label, name: '', id: '', placeholder: '', autocomplete: '', section: '', repeatIndex: 0, ...extra,
 });
 
 function data(): VaultData {
@@ -71,12 +71,12 @@ describe('planFills', () => {
     expect(fills.map((f) => f.value)).toEqual(['Ming', 'Li', 'Ming Li']);
   });
 
-  it('indexes repeated education blocks in document order and formats dates', () => {
+  it('indexes repeated education blocks by repeatIndex and formats dates', () => {
     const fills = planFills([
       desc('s1', '学校名称', { section: '教育经历' }),
       desc('e1', '毕业时间', { section: '教育经历' }),
-      desc('s2', '学校名称', { section: '教育经历' }),
-      desc('e2', '毕业时间', { section: '教育经历', kind: 'month' }),
+      desc('s2', '学校名称', { section: '教育经历', repeatIndex: 1 }),
+      desc('e2', '毕业时间', { section: '教育经历', kind: 'month', repeatIndex: 1 }),
     ], data());
     expect(fills).toEqual([
       { signature: 's1', value: '伦敦示例大学' },
@@ -173,5 +173,38 @@ describe('formatDate placeholders (A5)', () => {
     const base = data();
     const withBirth = { ...base, profile: { ...base.profile, basic: { ...base.profile.basic, birthDate: '2000-01-02' } } };
     expect(planFills([desc('b', '出生日期')], withBirth)).toEqual([{ signature: 'b', value: '2000-01-02' }]);
+  });
+});
+
+describe('repeat sections (B2)', () => {
+  it('a top-level degree field does not shift the education blocks', () => {
+    const fills = planFills([
+      desc('top', '最高学历'),
+      desc('s1', '学校名称', { section: '教育经历', repeatIndex: 0 }),
+      desc('d1', '学历', { section: '教育经历', repeatIndex: 0 }),
+      desc('s2', '学校名称', { section: '教育经历', repeatIndex: 1 }),
+      desc('d2', '学历', { section: '教育经历', repeatIndex: 1 }),
+    ], data());
+    expect(fills).toEqual([
+      { signature: 'top', value: '硕士' },
+      { signature: 's1', value: '伦敦示例大学' },
+      { signature: 'd1', value: '硕士' },
+      { signature: 's2', value: '示例师范大学' },
+      { signature: 'd2', value: '本科' },
+    ]);
+  });
+
+  it('blocks sent in separate plan requests keep their own entry', () => {
+    expect(planFills([desc('a', '学校名称', { repeatIndex: 0 })], data())).toEqual([{ signature: 'a', value: '伦敦示例大学' }]);
+    expect(planFills([desc('b', '学校名称', { repeatIndex: 1 })], data())).toEqual([{ signature: 'b', value: '示例师范大学' }]);
+  });
+
+  it('a block missing a field does not shift the next block', () => {
+    const fills = planFills([
+      desc('s1', '学校名称', { section: '教育经历', repeatIndex: 0 }),
+      desc('s2', '学校名称', { section: '教育经历', repeatIndex: 1 }),
+      desc('e2', '毕业时间', { section: '教育经历', repeatIndex: 1 }),
+    ], data());
+    expect(fills).toContainEqual({ signature: 'e2', value: '2025-06' });
   });
 });

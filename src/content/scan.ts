@@ -1,5 +1,6 @@
 import type { FieldDescriptor, FieldKind, FieldOption } from '@/shared/autofill-types';
 import { resolveLabel, sectionOf } from './label';
+import { repeatIndexOf } from './repeat';
 import { fnv1a } from './signature';
 
 export interface ScannedField {
@@ -55,7 +56,9 @@ function radioGroupLabel(group: readonly HTMLInputElement[]): string {
   return (copy.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
-function describe(el: HTMLElement, kind: FieldKind, label: string, options?: FieldOption[]): Omit<FieldDescriptor, 'signature'> {
+type Draft = Omit<FieldDescriptor, 'signature' | 'repeatIndex'>;
+
+function describe(el: HTMLElement, kind: FieldKind, label: string, options?: FieldOption[]): Draft {
   const input = el as HTMLInputElement;
   return {
     kind, label: cut(label), name: cut(input.name ?? ''), id: cut(el.id), placeholder: cut(input.placeholder ?? ''),
@@ -66,11 +69,12 @@ function describe(el: HTMLElement, kind: FieldKind, label: string, options?: Fie
 export function scanFields(root: ParentNode): ScannedField[] {
   const seenRadioGroups = new Set<string>();
   const counts = new Map<string, number>();
+  const prints = new WeakMap<Element, string>();
   const result: ScannedField[] = [];
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('input, select, textarea'))) {
     const kind = kindOf(el);
     if (!kind || !isUsable(el, kind)) continue;
-    let draft: Omit<FieldDescriptor, 'signature'>;
+    let draft: Draft;
     if (kind === 'radio') {
       const name = (el as HTMLInputElement).name;
       if (!name || seenRadioGroups.has(name)) continue;
@@ -85,10 +89,11 @@ export function scanFields(root: ParentNode): ScannedField[] {
         : undefined;
       draft = describe(el, kind, label, options);
     }
-    const base = fnv1a(`${draft.label}|${draft.name}|${draft.id}|${draft.section}`);
+    const repeatIndex = repeatIndexOf(el, prints);
+    const base = fnv1a(`${draft.label}|${draft.name}|${draft.id}|${draft.section}|${repeatIndex}`);
     const occurrence = counts.get(base) ?? 0;
     counts.set(base, occurrence + 1);
-    result.push({ descriptor: { ...draft, signature: `${base}-${occurrence}` }, element: el });
+    result.push({ descriptor: { ...draft, repeatIndex, signature: `${base}-${occurrence}` }, element: el });
   }
   return result;
 }

@@ -4,7 +4,7 @@ import { SKIP } from '@/background/autofill/rules';
 import type { FieldDescriptor } from '@/shared/autofill-types';
 
 const desc = (label: string, extra: Partial<FieldDescriptor> = {}): FieldDescriptor => ({
-  signature: 's', kind: 'text', label, name: '', id: '', placeholder: '', autocomplete: '', section: '', ...extra,
+  signature: 's', kind: 'text', label, name: '', id: '', placeholder: '', autocomplete: '', section: '', repeatIndex: 0, ...extra,
 });
 
 describe('matchField', () => {
