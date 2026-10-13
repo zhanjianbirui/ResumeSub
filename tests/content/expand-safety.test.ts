@@ -81,4 +81,24 @@ describe('add-button text and classes (C6)', () => {
     document.body.innerHTML = '<div><div class="edu"><input id="a"></div><span class="address">新增地址</span></div>';
     expect(findAddButton(anchor(), 'education')).toBeNull();
   });
+
+  it.each([
+    ['a span inside a typeless form button', '<form><div class="edu"><input id="a"></div><button><span class="btn-add">添加教育经历</span></button></form>'],
+    ['a role=button inside a real link', '<div class="edu"><input id="a"></div><a href="/next"><div role="button">添加教育经历</div></a>'],
+  ])('rejects %s (unsafe interactive host)', (_name, html) => {
+    document.body.innerHTML = html;
+    expect(findAddButton(anchor(), 'education')).toBeNull();
+  });
+
+  it('does not accept a generic add button that belongs to another section', () => {
+    document.body.innerHTML = `<div>
+      <section><h3>教育经历</h3><div class="edu"><input id="a"></div></section>
+      <section><h3>工作经历</h3><button type="button" id="x">添加</button></section></div>`;
+    expect(findAddButton(anchor(), 'education')).toBeNull();
+  });
+
+  it('still accepts a generic add button in the same section', () => {
+    document.body.innerHTML = `<div><section><h3>教育经历</h3><div class="edu"><input id="a"></div><button type="button" id="x">添加</button></section></div>`;
+    expect(findAddButton(anchor(), 'education')?.id).toBe('x');
+  });
 });

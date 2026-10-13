@@ -27,8 +27,9 @@ function restoreFocus(previous: Element | null, el: HTMLInputElement) {
 /** 日期组件一般允许直接输入：写入值，面板打开时按 Enter 提交，失焦后等组件校验完再回读确认，最后还原焦点。 */
 export async function fillDatePicker(el: HTMLInputElement, value: string, ctx: FillContext): Promise<FillOutcome> {
   if (el.value.trim() !== '') return 'skipped';
+  if (el.readOnly) return 'failed'; // 只读输入框写了值组件的数据模型也不会更新
   const previous = ctx.doc.activeElement;
-  el.focus();
+  el.focus({ preventScroll: true });
   setNativeValue(el, value);
   el.dispatchEvent(new Event('input', { bubbles: true }));
   if (panelOpen(ctx.doc)) key(el, 'Enter', 13);

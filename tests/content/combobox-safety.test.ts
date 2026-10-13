@@ -68,12 +68,12 @@ describe('closing (C2)', () => {
     expect(dd.classList.contains('ant-select-dropdown-hidden')).toBe(true);
   });
 
-  it('still presses Escape when no dropdown appears within the timeout', async () => {
+  it('does not press Escape when no dropdown is visible', async () => {
     const { root } = antSelect('b');
     const keys: string[] = [];
     document.addEventListener('keydown', (e) => keys.push(e.key));
     expect(await fillCombobox(root, { signature: 's', value: '硕士' }, ctx())).toBe('failed');
-    expect(keys).toContain('Escape');
+    expect(keys).not.toContain('Escape');
   });
 
   it('closes the dropdown when the option click does not take', async () => {

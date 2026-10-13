@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { fillDatePicker } from '@/content/datepicker';
 
 afterEach(() => {
@@ -22,7 +22,7 @@ it('types the value, presses Enter while the panel is open and keeps it', async 
 });
 
 it('reports failure when the widget rejects typed input', async () => {
-  document.body.innerHTML = '<div class="el-date-editor"><input readonly></div>';
+  document.body.innerHTML = '<div class="el-date-editor"><input></div>';
   const input = document.querySelector('input') as HTMLInputElement;
   input.addEventListener('change', () => { input.value = ''; });
   expect(await fillDatePicker(input, '2025-09', ctx())).toBe('failed');
@@ -60,4 +60,22 @@ it('re-reads the value after blur and reports failure when the widget clears it 
   const input = document.querySelector('input') as HTMLInputElement;
   input.addEventListener('blur', () => setTimeout(() => { input.value = ''; }, 50));
   expect(await fillDatePicker(input, 'garbage', ctx())).toBe('failed');
+});
+
+it('fails a readOnly input without touching it', async () => {
+  document.body.innerHTML = '<div class="el-date-editor"><input readonly></div>';
+  const input = document.querySelector('input') as HTMLInputElement;
+  const events: string[] = [];
+  ['focus', 'input', 'change', 'keydown'].forEach((t) => input.addEventListener(t, () => events.push(t)));
+  expect(await fillDatePicker(input, '2025-09', ctx())).toBe('failed');
+  expect(events).toEqual([]);
+  expect(input.value).toBe('');
+});
+
+it('focuses without scrolling', async () => {
+  document.body.innerHTML = '<div class="ant-picker"><input></div>';
+  const input = document.querySelector('input') as HTMLInputElement;
+  const spy = vi.spyOn(input, 'focus');
+  await fillDatePicker(input, '2025-09', ctx());
+  expect(spy).toHaveBeenCalledWith({ preventScroll: true });
 });

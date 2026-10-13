@@ -95,6 +95,7 @@ async function poll<T>(probe: () => T | null, ms: number, ctx: FillContext): Pro
 
 /** 先按 Escape；等下拉层真正收起（最多 300ms），仍未收起才再点一次展开按钮。 */
 async function close(root: HTMLElement, opener: HTMLElement, dropdown: HTMLElement | null, flavor: Flavor, ctx: FillContext) {
+  if (openDropdowns(flavor, ctx.doc).length === 0) return;
   const target = root.querySelector<HTMLElement>('input') ?? opener;
   target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
   if (!dropdown) return;

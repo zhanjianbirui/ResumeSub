@@ -1,4 +1,5 @@
 import type { EntryGroup } from '@/shared/autofill-types';
+import { sectionOf } from './label';
 import { repeatBlockOf } from './repeat';
 import { clean } from './text';
 import { isVisible, layoutAvailable } from './visibility';
@@ -26,16 +27,24 @@ const hasAddClass = (el: Element) =>
   Array.from(el.classList).some((token) => token.toLowerCase().split(/[-_]/).includes('add'));
 
 /** 链接只允许 # 或 javascript:；表单里的 submit 按钮和没写 type 的按钮都会提交表单。 */
-function safeToClick(el: HTMLElement): boolean {
-  if (el.getAttribute('aria-disabled') === 'true' || (el as HTMLButtonElement).disabled) return false;
+function unsafeInteractive(el: HTMLElement): boolean {
+  if (el.getAttribute('aria-disabled') === 'true' || (el as HTMLButtonElement).disabled) return true;
   if (el instanceof HTMLAnchorElement && el.hasAttribute('href')) {
     const href = (el.getAttribute('href') ?? '').trim().toLowerCase();
-    if (href !== '' && href !== '#' && !href.startsWith('javascript:')) return false;
+    if (href !== '' && href !== '#' && !href.startsWith('javascript:')) return true;
   }
-  if (el instanceof HTMLButtonElement && el.form) {
+  if (el instanceof HTMLButtonElement) {
     const type = (el.getAttribute('type') ?? '').toLowerCase();
-    if (type === '' || type === 'submit') return false;
+    if (type === 'submit' || (type === '' && el.form)) return true;
   }
+  return false;
+}
+
+/** 候选自身和最近的可交互祖先（a[href] / button）都要安全：button 里套 span 点下去照样提交表单。 */
+function safeToClick(el: HTMLElement): boolean {
+  if (unsafeInteractive(el)) return false;
+  const host = el.parentElement?.closest<HTMLElement>('a[href], button');
+  if (host && unsafeInteractive(host)) return false;
   return el.matches(BUTTON_LIKE) || hasAddClass(el);
 }
 
@@ -48,14 +57,14 @@ function looksLikeAdd(el: HTMLElement, layout: boolean): boolean {
 const groupOfText = (text: string): EntryGroup | null => GROUP_TEXT.find(([, re]) => re.test(text))?.[0] ?? null;
 
 /** 在一层里选按钮：点名本分组的优先；不点名的只在允许时、且这一层没有别的分组的按钮时才用。 */
-function pickIn(node: HTMLElement, group: EntryGroup | undefined, genericOk: boolean, layout: boolean): HTMLElement | null {
+function pickIn(node: HTMLElement, group: EntryGroup | undefined, genericOk: (el: HTMLElement) => boolean, layout: boolean): HTMLElement | null {
   const candidates = [...node.querySelectorAll<HTMLElement>(CLICKABLE)].filter((el) => looksLikeAdd(el, layout));
   const tagged = candidates.map((el) => ({ el, group: groupOfText(clean(el.textContent)) }));
   if (!group) return tagged[0]?.el ?? null;
   const own = tagged.find((c) => c.group === group);
   if (own) return own.el;
   const foreign = tagged.some((c) => c.group !== null);
-  return genericOk && !foreign ? tagged.find((c) => c.group === null)?.el ?? null : null;
+  return foreign ? null : tagged.find((c) => c.group === null && genericOk(c.el))?.el ?? null;
 }
 
 /**
@@ -67,8 +76,11 @@ export function findAddButton(anchor: HTMLElement, group?: EntryGroup): HTMLElem
   const block = repeatBlockOf(anchor);
   const limit = block ? BLOCK_LEVELS : MAX_DEPTH;
   let node: HTMLElement | null = (block ?? anchor).parentElement;
+  const anchorSection = block ? '' : sectionOf(anchor);
   for (let depth = 0; node && depth < limit; depth++, node = node.parentElement) {
-    const hit = pickIn(node, group, !block || depth < GENERIC_LEVELS, layout);
+    // 有区块时只看层数；没有区块时，不点名分组的按钮必须和 anchor 同一个小节。
+    const genericOk = (el: HTMLElement) => (block ? depth < GENERIC_LEVELS : sectionOf(el) === anchorSection);
+    const hit = pickIn(node, group, genericOk, layout);
     if (hit) return hit;
   }
   return null;
