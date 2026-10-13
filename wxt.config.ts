@@ -5,6 +5,7 @@ export default defineConfig({
   manifest: {
     name: 'ResumeSub',
     description: '简历一键投递：本地加密档案 + 自动填写',
-    permissions: ['storage', 'alarms'],
+    permissions: ['storage', 'alarms', 'scripting', 'activeTab'],
+    optional_host_permissions: ['https://*/*', 'http://*/*'],
   },
 });

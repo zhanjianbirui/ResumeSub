@@ -1,8 +1,10 @@
 import { browser } from 'wxt/browser';
+import type { ScriptPublicPath } from 'wxt/utils/inject-script';
 import { createAutoLock, isAutoLockAlarm } from '@/background/auto-lock';
 import { createPendingTabs } from '@/background/pending';
 import { createPrefs } from '@/background/prefs';
 import { createRouter } from '@/background/router';
+import { createOriginCheck, injectIntoTabs, syncAutofillScripts } from '@/background/sites';
 import { fromBrowserArea } from '@/background/storage';
 import { createVault } from '@/background/vault/vault';
 
@@ -24,11 +26,11 @@ export default defineBackground(() => {
     async () => (await prefs.get()).autoLockMinutes,
   );
   const extOrigin = browser.runtime.getURL('/');
-  // TODO(Task 5): 接入真实的通知与 origin 授权判断
-  const pending = createPendingTabs(async () => undefined);
+  const pending = createPendingTabs((tabId) => browser.tabs.sendMessage(tabId, { type: 'autofill.retry' }));
+  const isOriginAllowed = createOriginCheck(browser.permissions);
   const handle = createRouter({
     vault, prefs, autoLock, pending, extId: browser.runtime.id, extOrigin,
-    isOriginAllowed: async () => false,
+    isOriginAllowed,
   });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -38,6 +40,26 @@ export default defineBackground(() => {
     });
     return true;
   });
+
+  const scripting = {
+    getRegisteredContentScripts: (filter: { ids: string[] }) => browser.scripting.getRegisteredContentScripts(filter),
+    registerContentScripts: (scripts: Parameters<typeof browser.scripting.registerContentScripts>[0]) =>
+      browser.scripting.registerContentScripts(scripts),
+    updateContentScripts: (scripts: Parameters<typeof browser.scripting.updateContentScripts>[0]) =>
+      browser.scripting.updateContentScripts(scripts),
+    unregisterContentScripts: (filter: { ids: string[] }) => browser.scripting.unregisterContentScripts(filter),
+    executeScript: (injection: { target: { tabId: number; allFrames: boolean }; files: string[] }) =>
+      browser.scripting.executeScript({ target: injection.target, files: injection.files as ScriptPublicPath[] }),
+  };
+  const sync = () =>
+    syncAutofillScripts(scripting, browser.permissions).catch((e: unknown) =>
+      console.error('[ResumeSub] sync autofill scripts failed', e));
+  browser.runtime.onInstalled.addListener(() => void sync());
+  browser.runtime.onStartup.addListener(() => void sync());
+  browser.permissions.onAdded.addListener((added) => {
+    void sync().then(() => injectIntoTabs(browser.tabs, scripting, (added.origins ?? []).filter((o) => /^https?:/.test(o))));
+  });
+  browser.permissions.onRemoved.addListener(() => void sync());
 
   browser.alarms.onAlarm.addListener((alarm) => {
     if (isAutoLockAlarm(alarm)) void vault.lock();

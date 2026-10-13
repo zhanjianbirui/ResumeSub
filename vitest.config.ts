@@ -9,7 +9,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**'],
-      exclude: ['src/entrypoints/background.ts', 'src/extract/pdf-browser.ts', 'src/entrypoints/**/main.tsx', 'src/**/*.css', 'src/**/*.html'],
+      exclude: ['src/entrypoints/background.ts', 'src/extract/pdf-browser.ts', 'src/entrypoints/**/main.tsx', 'src/entrypoints/*.content.ts', 'src/**/*.css', 'src/**/*.html'],
       thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 },
     },
   },
