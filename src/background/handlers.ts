@@ -1,6 +1,8 @@
 import type { Request } from '@/shared/messages';
 import { emptyVaultData } from '@/shared/schema/vault-data';
 import type { AutoLock } from './auto-lock';
+import { planFills } from './autofill/plan';
+import type { PendingTabs } from './pending';
 import type { PrefsStore } from './prefs';
 import type { Vault } from './vault/vault';
 
@@ -8,9 +10,14 @@ export interface HandlerDeps {
   vault: Vault;
   prefs: PrefsStore;
   autoLock: AutoLock;
+  pending: PendingTabs;
 }
 
-export async function dispatch(req: Request, d: HandlerDeps): Promise<unknown> {
+export interface RequestContext {
+  tabId?: number;
+}
+
+export async function dispatch(req: Request, d: HandlerDeps, ctx: RequestContext = {}): Promise<unknown> {
   switch (req.type) {
     case 'vault.status':
       return { status: await d.vault.status() };
@@ -21,6 +28,7 @@ export async function dispatch(req: Request, d: HandlerDeps): Promise<unknown> {
     case 'vault.unlock':
       await d.vault.unlock(req.password);
       await d.autoLock.touch();
+      await d.pending.flush();
       return null;
     case 'vault.lock':
       await d.vault.lock();
@@ -42,6 +50,15 @@ export async function dispatch(req: Request, d: HandlerDeps): Promise<unknown> {
       await d.vault.write({ ...data, profile: req.profile, resumeFile: req.file });
       await d.autoLock.touch();
       return null;
+    }
+    case 'autofill.plan': {
+      if ((await d.vault.status()) !== 'unlocked') {
+        if (ctx.tabId !== undefined) d.pending.add(ctx.tabId);
+        return { status: 'locked' };
+      }
+      const data = await d.vault.read();
+      await d.autoLock.touch();
+      return { status: 'ready', fills: planFills(req.fields, data) };
     }
     case 'prefs.get':
       return d.prefs.get();

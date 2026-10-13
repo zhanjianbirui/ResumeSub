@@ -6,7 +6,7 @@ import { VaultError } from './vault/errors';
 export interface SenderLike {
   id?: string;
   url?: string;
-  tab?: unknown;
+  tab?: { id?: number };
 }
 
 export type SenderKind = 'extension' | 'content' | 'unknown';
@@ -14,10 +14,11 @@ export type SenderKind = 'extension' | 'content' | 'unknown';
 export interface RouterDeps extends HandlerDeps {
   extId: string;
   extOrigin: string;
+  isOriginAllowed(url: string): Promise<boolean>;
 }
 
-/** content script 可调用的接口白名单。M1 为空；M3 加入 scan / fill / suggest。 */
-const CONTENT_ALLOWED: ReadonlySet<RequestType> = new Set<RequestType>();
+/** content script 可调用的接口白名单：只有 autofill.plan，且发送页面的 origin 必须已获用户授权。 */
+const CONTENT_ALLOWED: ReadonlySet<RequestType> = new Set<RequestType>(['autofill.plan']);
 
 export function classifySender(sender: SenderLike, extId: string, extOrigin: string): SenderKind {
   if (sender.id !== extId) return 'unknown';
@@ -42,8 +43,11 @@ export function createRouter(deps: RouterDeps) {
     if (!parsed.success) return fail('BAD_REQUEST', '请求格式无效');
     const req = parsed.output;
     if (kind === 'content' && !CONTENT_ALLOWED.has(req.type)) return fail('FORBIDDEN', '无权调用该接口');
+    if (kind === 'content' && !(sender.url && (await deps.isOriginAllowed(sender.url)))) {
+      return fail('FORBIDDEN', '无权调用该接口');
+    }
     try {
-      return { ok: true, data: await dispatch(req, deps) };
+      return { ok: true, data: await dispatch(req, deps, { tabId: sender.tab?.id }) };
     } catch (error) {
       return toFailure(error);
     }

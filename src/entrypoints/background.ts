@@ -1,5 +1,6 @@
 import { browser } from 'wxt/browser';
 import { createAutoLock, isAutoLockAlarm } from '@/background/auto-lock';
+import { createPendingTabs } from '@/background/pending';
 import { createPrefs } from '@/background/prefs';
 import { createRouter } from '@/background/router';
 import { fromBrowserArea } from '@/background/storage';
@@ -23,7 +24,12 @@ export default defineBackground(() => {
     async () => (await prefs.get()).autoLockMinutes,
   );
   const extOrigin = browser.runtime.getURL('/');
-  const handle = createRouter({ vault, prefs, autoLock, extId: browser.runtime.id, extOrigin });
+  // TODO(Task 5): 接入真实的通知与 origin 授权判断
+  const pending = createPendingTabs(async () => undefined);
+  const handle = createRouter({
+    vault, prefs, autoLock, pending, extId: browser.runtime.id, extOrigin,
+    isOriginAllowed: async () => false,
+  });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void handle(message, sender).then(sendResponse, (error: unknown) => {

@@ -13,7 +13,7 @@ const optionsTab = { id: EXT_ID, url: `${ORIGIN}options.html`, tab: { id: 3 } };
 const content = { id: EXT_ID, url: 'https://jobs.example.com/apply', tab: { id: 1 } };
 const PW = 'correct-horse-1';
 
-function makeRouter(vaultOverride?: Vault) {
+function makeRouter(vaultOverride?: Vault, allowed = true) {
   const local = memoryArea();
   const session = memoryArea();
   const vault = vaultOverride ?? createVault({ local, session, now: () => 0, iterations: 1000 });
@@ -22,8 +22,17 @@ function makeRouter(vaultOverride?: Vault) {
     touch: async () => { events.push('touch'); },
     cancel: async () => { events.push('cancel'); },
   };
-  const handle = createRouter({ vault, prefs: createPrefs(local), autoLock, extId: EXT_ID, extOrigin: ORIGIN });
-  return { handle, events, vault };
+  const pending = {
+    added: [] as number[],
+    flushed: 0,
+    add(tabId: number) { this.added.push(tabId); },
+    async flush() { this.flushed += 1; },
+  };
+  const handle = createRouter({
+    vault, prefs: createPrefs(local), autoLock, pending, extId: EXT_ID, extOrigin: ORIGIN,
+    isOriginAllowed: async () => allowed,
+  });
+  return { handle, events, vault, pending };
 }
 
 describe('classifySender', () => {
@@ -37,6 +46,37 @@ describe('classifySender', () => {
 });
 
 describe('router', () => {
+  const planReq = {
+    type: 'autofill.plan',
+    url: 'https://jobs.example.com/apply',
+    fields: [{ signature: 'a', kind: 'text', label: '姓名', name: '', id: '', placeholder: '', autocomplete: '', section: '' }],
+  };
+
+  it('lets content scripts on allowed origins request a plan', async () => {
+    const { handle } = makeRouter();
+    await handle({ type: 'vault.setup', password: PW }, page);
+    const base = emptyProfile();
+    await handle({ type: 'profile.save', profile: { ...base, basic: { ...base.basic, name: '测试用户' } } }, page);
+    expect(await handle(planReq, content)).toEqual({
+      ok: true, data: { status: 'ready', fills: [{ signature: 'a', value: '测试用户' }] },
+    });
+  });
+
+  it('returns locked and remembers the tab, then flushes on unlock', async () => {
+    const { handle, pending } = makeRouter();
+    await handle({ type: 'vault.setup', password: PW }, page);
+    await handle({ type: 'vault.lock' }, page);
+    expect(await handle(planReq, content)).toEqual({ ok: true, data: { status: 'locked' } });
+    expect(pending.added).toEqual([1]);
+    await handle({ type: 'vault.unlock', password: PW }, page);
+    expect(pending.flushed).toBe(1);
+  });
+
+  it('forbids plan requests from origins the user has not authorised', async () => {
+    const { handle } = makeRouter(undefined, false);
+    expect(await handle(planReq, content)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+  });
+
   it('rejects malformed requests', async () => {
     const { handle } = makeRouter();
     expect(await handle({ type: 'nope' }, page)).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
