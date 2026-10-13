@@ -5,6 +5,7 @@ import { parseEducation } from './education';
 import { type Entry, splitEntries } from './entries';
 import { parseExperience } from './experience';
 import { parseHeader } from './header';
+import { normalizeText } from './normalize';
 import { parseProjects } from './projects';
 import { type SectionKey, splitSections } from './sections';
 import { parseSkills } from './skills';
@@ -21,7 +22,8 @@ function entriesOf(
   return { entries, warnings };
 }
 
-export function parseResume(lines: readonly TextLine[]): ParseResult {
+export function parseResume(rawLines: readonly TextLine[]): ParseResult {
+  const lines = rawLines.map((l) => ({ ...l, segments: l.segments.map(normalizeText).filter(Boolean) }));
   const text = lines.map(lineText).join('\n');
   const { header, sections } = splitSections(lines);
   const basic = parseHeader(header, text);
