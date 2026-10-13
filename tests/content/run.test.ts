@@ -156,3 +156,31 @@ describe('session hardening (D1-D4)', () => {
     expect(document.activeElement).toBe(input('a'));
   });
 });
+
+describe('repeatable section expansion', () => {
+  const BLOCK = '<div class="edu-item"><label>学校名称<input name="school"></label><label>专业<input name="major"></label></div>';
+
+  it('clicks add once to create a second education block and fills it on the next run', async () => {
+    document.body.innerHTML = `<section><h3>教育经历</h3>${BLOCK}<button type="button" id="add">添加教育经历</button></section>`;
+    const button = document.getElementById('add') as HTMLButtonElement;
+    let clicks = 0;
+    button.addEventListener('click', () => {
+      clicks += 1;
+      button.insertAdjacentHTML('beforebegin', BLOCK);
+    });
+    const schools = ['甲大学', '乙大学'];
+    const { session } = setup((fields) => ({
+      status: 'ready',
+      fills: fields.filter((f) => f.label === '学校名称')
+        .map((f) => ({ signature: f.signature, value: schools[f.repeatIndex], group: 'education' as const })),
+      counts: { education: 2, experience: 0, projects: 0 },
+    }));
+    await session.run();
+    await session.run();
+    const values = [...document.querySelectorAll<HTMLInputElement>('[name="school"]')].map((i) => i.value);
+    expect(values).toEqual(['甲大学', '乙大学']);
+    expect(clicks).toBe(1);
+    await session.run();
+    expect(clicks).toBe(1);
+  });
+});

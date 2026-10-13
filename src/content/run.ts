@@ -1,4 +1,5 @@
 import type { FieldDescriptor, FillInstruction, PlanResponse } from '@/shared/autofill-types';
+import { createExpander } from './expand';
 import { applyFill, type FillContext, type FillOutcome, hasValue } from './fill';
 import { markField } from './mark';
 import type { Overlay } from './overlay';
@@ -86,6 +87,7 @@ export function createAutofillSession(deps: SessionDeps) {
   const handled = new WeakSet<HTMLElement>();
   let filledTotal = 0;
   const unfilled = createUnfilledTracker();
+  const expander = createExpander();
 
   const showResult = () => deps.overlay.show({ kind: 'result', filled: filledTotal, unfilled: unfilled.count() });
 
@@ -100,6 +102,7 @@ export function createAutofillSession(deps: SessionDeps) {
       }
       const result = await applyAll(fresh, plan.fills, deps.fillContext ?? {});
       fresh.forEach((f) => handled.add(f.element));
+      expander.afterFill(fresh, plan.fills, plan.counts);
       filledTotal += result.filled;
       unfilled.add(result.unfilled);
       showResult();
