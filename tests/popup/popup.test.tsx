@@ -10,6 +10,12 @@ vi.mock('@/shared/client', async (importOriginal) => ({
   call: vi.fn(),
 }));
 
+vi.mock('@/shared/site-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/site-access')>()),
+  currentTabOrigin: vi.fn(async () => null),
+  listEnabledSites: vi.fn(async () => []),
+}));
+
 const mockCall = vi.mocked(call);
 const PW = 'correct-horse-1';
 
@@ -31,10 +37,17 @@ function typeInto(label: string, value: string) {
   fireEvent.input(screen.getByLabelText(label), { target: { value } });
 }
 
+let consoleError: ReturnType<typeof vi.spyOn>;
+
 beforeEach(() => {
   mockCall.mockReset();
+  consoleError = vi.spyOn(console, 'error');
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  expect(consoleError).not.toHaveBeenCalled();
+  consoleError.mockRestore();
+});
 
 describe('validateNewPassword', () => {
   it('checks length and confirmation', () => {

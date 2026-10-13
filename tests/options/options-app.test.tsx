@@ -11,6 +11,12 @@ vi.mock('@/shared/client', async (importOriginal) => ({
   call: vi.fn(),
 }));
 
+vi.mock('@/shared/site-access', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/shared/site-access')>()),
+  currentTabOrigin: vi.fn(async () => null),
+  listEnabledSites: vi.fn(async () => []),
+}));
+
 const mockCall = vi.mocked(call);
 
 function backend(handlers: Record<string, (req: Record<string, unknown>) => unknown>) {
@@ -21,8 +27,17 @@ function backend(handlers: Record<string, (req: Record<string, unknown>) => unkn
   }) as never);
 }
 
-beforeEach(() => { mockCall.mockReset(); });
-afterEach(cleanup);
+let consoleError: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  mockCall.mockReset();
+  consoleError = vi.spyOn(console, 'error');
+});
+afterEach(() => {
+  cleanup();
+  expect(consoleError).not.toHaveBeenCalled();
+  consoleError.mockRestore();
+});
 
 describe('firstIssue', () => {
   it('returns null for a valid profile and a path-prefixed message otherwise', () => {

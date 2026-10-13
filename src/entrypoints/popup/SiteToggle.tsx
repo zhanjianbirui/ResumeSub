@@ -1,17 +1,35 @@
 import { useEffect, useState } from 'preact/hooks';
-import { currentTabOrigin, disableSites, enableSites, isSiteEnabled, originPattern } from '@/shared/site-access';
+import {
+  currentTabOrigin, disableSites, enableSites, isSiteEnabled, listEnabledSites, originPattern,
+} from '@/shared/site-access';
 
-type State = { kind: 'loading' } | { kind: 'unsupported' } | { kind: 'ready'; origin: string; enabled: boolean };
+/** off：未授权；site：本站单独授权；preset：被常见网站等通配授权覆盖（只能在设置页管理）。 */
+type Mode = 'off' | 'site' | 'preset';
+type State = { kind: 'loading' } | { kind: 'unsupported' } | { kind: 'ready'; origin: string; mode: Mode };
+
+async function readMode(origin: string): Promise<Mode> {
+  if (!(await isSiteEnabled(origin))) return 'off';
+  return (await listEnabledSites()).includes(originPattern(origin)) ? 'site' : 'preset';
+}
+
+async function readState(): Promise<State> {
+  const origin = await currentTabOrigin();
+  return origin ? { kind: 'ready', origin, mode: await readMode(origin) } : { kind: 'unsupported' };
+}
+
+const HINTS: Readonly<Record<Mode, string>> = {
+  off: '',
+  site: '：已启用自动填写',
+  preset: '：已通过常见网站授权启用，可在设置中管理',
+};
 
 export function SiteToggle() {
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [error, setError] = useState('');
+  const [pending, setPending] = useState(false);
 
   useEffect(() => {
-    void (async () => {
-      const origin = await currentTabOrigin();
-      setState(origin ? { kind: 'ready', origin, enabled: await isSiteEnabled(origin) } : { kind: 'unsupported' });
-    })().catch((e: unknown) => {
+    readState().then(setState, (e: unknown) => {
       console.error('[ResumeSub] read site state failed', e);
       setState({ kind: 'unsupported' });
     });
@@ -22,26 +40,31 @@ export function SiteToggle() {
 
   // permissions.request 必须在点击事件中同步发起，否则浏览器会认为不是用户操作而拒绝
   const toggle = () => {
-    setError('');
+    if (pending) return;
+    const enabling = state.mode === 'off';
     const patterns = [originPattern(state.origin)];
-    const action = state.enabled ? disableSites(patterns) : enableSites(patterns);
-    action
+    setError('');
+    setPending(true);
+    (enabling ? enableSites(patterns) : disableSites(patterns))
       .then((ok) => {
-        if (ok) setState({ ...state, enabled: !state.enabled });
-        else setError('未获得授权');
+        if (ok) setState({ ...state, mode: enabling ? 'site' : 'off' });
+        else setError(enabling ? '未获得授权' : '停用失败');
       })
       .catch((e: unknown) => {
         console.error('[ResumeSub] toggle site failed', e);
-        setError('操作失败，请重试');
-      });
+        setError(enabling ? '操作失败，请重试' : '停用失败');
+      })
+      .finally(() => setPending(false));
   };
 
   return (
     <section>
-      <p class="hint">{state.origin}{state.enabled ? '：已启用自动填写（刷新页面后生效）' : ''}</p>
-      <button type="button" class={state.enabled ? '' : 'primary'} onClick={toggle}>
-        {state.enabled ? '在此网站停用' : '在此网站启用自动填写'}
-      </button>
+      <p class="hint">{state.origin}{HINTS[state.mode]}</p>
+      {state.mode !== 'preset' && (
+        <button type="button" class={state.mode === 'off' ? 'primary' : ''} disabled={pending} onClick={toggle}>
+          {state.mode === 'off' ? '在此网站启用自动填写' : '在此网站停用'}
+        </button>
+      )}
       {error && <p class="error" role="alert">{error}</p>}
     </section>
   );
