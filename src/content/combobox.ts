@@ -1,5 +1,5 @@
 import type { FillInstruction } from '@/shared/autofill-types';
-import { chooseOption } from '@/shared/option-match';
+import { chooseOption, type MatchMode } from '@/shared/option-match';
 import type { FillContext, FillOutcome } from './fill';
 import { clean } from './text';
 import { isVisible, layoutAvailable } from './visibility';
@@ -28,7 +28,16 @@ const ARIA: Flavor = {
   opener: '[aria-haspopup="listbox"]',
 };
 const POLL_MS = 30;
+/** Escape 之后最多等这么久让下拉层的收起动画结束，再决定要不要点展开按钮把它收起。 */
+const CLOSE_MS = 300;
 const HIDDEN_DROPDOWN = '.ant-select-dropdown-hidden';
+/** Ant Design（rc-virtual-list）只渲染可视窗口内的选项。 */
+const VIRTUAL_HOLDER = '.rc-virtual-list-holder';
+const MAX_SCROLL_STEPS = 20;
+/** 无布局环境下 clientHeight 为 0 时的滚动步长。 */
+const SCROLL_STEP_PX = 256;
+/** 选项文字带括号限定（"北京大学（医学部）"）时，不能凭部分匹配从局部窗口里选它。 */
+const BRACKETED = /[（(【[]/;
 
 function flavorOf(root: HTMLElement): Flavor {
   if (root.matches('.ant-select')) return ANT;
@@ -49,46 +58,90 @@ function openDropdowns(flavor: Flavor, doc: Document): HTMLElement[] {
     .filter((d) => shown(d, layout) && [...d.querySelectorAll<HTMLElement>(flavor.option)].some((o) => shown(o, layout)));
 }
 
-/** ARIA 控件优先用 aria-controls 指向的列表；否则取展开后新出现的下拉层（没有新的就取最后一个可见的）。 */
-function currentDropdown(root: HTMLElement, flavor: Flavor, before: ReadonlySet<HTMLElement>, doc: Document): HTMLElement | null {
-  const controls = flavor === ARIA ? root.getAttribute('aria-controls') : null;
-  const owned = controls ? doc.getElementById(controls) : null;
-  const open = openDropdowns(flavor, doc);
-  if (owned) return open.includes(owned) ? owned : null;
-  return open.filter((d) => !before.has(d)).pop() ?? open.pop() ?? null;
+/** root 自身或其内部输入框通过 aria-controls / aria-owns 指向的列表 id。 */
+function anchoredId(root: HTMLElement): string | null {
+  const own = root.getAttribute('aria-controls') ?? root.getAttribute('aria-owns');
+  if (own) return own;
+  const inner = root.querySelector('[aria-controls], [aria-owns]');
+  return inner?.getAttribute('aria-controls') ?? inner?.getAttribute('aria-owns') ?? null;
 }
 
-function optionsIn(dropdown: HTMLElement | null, flavor: Flavor, doc: Document): HTMLElement[] {
-  if (!dropdown) return [];
+/** 只接受锚定到 root 的下拉层，或展开后才出现的下拉层；绝不退回到别的控件留下的可见下拉层。 */
+function currentDropdown(root: HTMLElement, flavor: Flavor, before: ReadonlySet<HTMLElement>, doc: Document): HTMLElement | null {
+  const open = openDropdowns(flavor, doc);
+  const id = anchoredId(root);
+  const owned = id ? doc.getElementById(id) : null;
+  const anchored = owned ? owned.closest<HTMLElement>(flavor.dropdown) ?? owned : null;
+  if (anchored && open.includes(anchored)) return anchored;
+  if (owned && flavor === ARIA) return null;
+  return open.filter((d) => !before.has(d)).pop() ?? null;
+}
+
+function optionsIn(dropdown: HTMLElement, flavor: Flavor, doc: Document): HTMLElement[] {
   const layout = layoutAvailable(doc);
   return [...dropdown.querySelectorAll<HTMLElement>(flavor.option)].filter((o) => shown(o, layout));
 }
 
-async function waitForDropdown(open: () => HTMLElement | null, ctx: FillContext): Promise<HTMLElement | null> {
-  for (let waited = 0; waited <= ctx.timeoutMs; waited += POLL_MS) {
-    const found = open();
-    if (found) return found;
+/** 按墙钟时间轮询，直到 probe 返回非 null 或超时。 */
+async function poll<T>(probe: () => T | null, ms: number, ctx: FillContext): Promise<T | null> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const found = probe();
+    if (found !== null) return found;
+    if (Date.now() >= deadline) return null;
     await ctx.wait(POLL_MS);
   }
-  return null;
 }
 
-/** 先按 Escape 收起；组件不响应 Escape 时再点一次展开按钮把它收起。 */
-async function close(opener: HTMLElement, dropdown: HTMLElement | null, flavor: Flavor, ctx: FillContext) {
-  const target = opener.closest('.ant-select, .el-select')?.querySelector<HTMLElement>('input') ?? opener;
+/** 先按 Escape；等下拉层真正收起（最多 300ms），仍未收起才再点一次展开按钮。 */
+async function close(root: HTMLElement, opener: HTMLElement, dropdown: HTMLElement | null, flavor: Flavor, ctx: FillContext) {
+  const target = root.querySelector<HTMLElement>('input') ?? opener;
   target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true }));
-  await ctx.wait(POLL_MS);
-  if (dropdown && openDropdowns(flavor, ctx.doc).includes(dropdown)) press(opener, 'mousedown', 'mouseup', 'click');
+  if (!dropdown) return;
+  const closed = await poll(() => (openDropdowns(flavor, ctx.doc).includes(dropdown) ? null : true), CLOSE_MS, ctx);
+  if (!closed) press(opener, 'mousedown', 'mouseup', 'click');
 }
 
-function pick(options: readonly HTMLElement[], fill: FillInstruction): HTMLElement | undefined {
-  const wanted = [fill.value ?? '', ...(fill.candidates ?? [])].filter(Boolean);
+const wantedOf = (fill: FillInstruction) => [fill.value ?? '', ...(fill.candidates ?? [])].filter(Boolean);
+
+function pick(options: readonly HTMLElement[], wanted: readonly string[], mode: MatchMode): HTMLElement | undefined {
   const labels = options.map((o, i) => ({ value: String(i), label: clean(o.textContent) }));
-  const index = chooseOption(labels, wanted);
+  const index = chooseOption(labels, wanted, mode);
   return index === null ? undefined : options[Number(index)];
 }
 
-/** 展开下拉框 → 等选项渲染 → 用候选文字本地匹配 → 点击；匹配失败就收起，不改动当前值。 */
+const unbracketed = (options: readonly HTMLElement[]) => options.filter((o) => !BRACKETED.test(o.textContent ?? ''));
+
+function scroller(dropdown: HTMLElement): HTMLElement | null {
+  const holder = dropdown.querySelector<HTMLElement>(VIRTUAL_HOLDER);
+  if (holder) return holder;
+  return dropdown.scrollHeight > dropdown.clientHeight ? dropdown : null;
+}
+
+/** 向下滚一屏；已经到底（scrollTop 没变）返回 false。 */
+function scrollDown(list: HTMLElement): boolean {
+  const before = list.scrollTop;
+  list.scrollTop = before + (list.clientHeight || SCROLL_STEP_PX);
+  list.dispatchEvent(new Event('scroll'));
+  return list.scrollTop !== before;
+}
+
+/** 虚拟列表只渲染一部分选项：没有精确/整词匹配时逐屏往下找；最后才接受不带括号限定的包含式匹配。 */
+async function findOption(dropdown: HTMLElement, flavor: Flavor, fill: FillInstruction, ctx: FillContext) {
+  const wanted = wantedOf(fill);
+  const list = scroller(dropdown);
+  if (!list) return pick(optionsIn(dropdown, flavor, ctx.doc), wanted, 'loose');
+  for (let step = 0; step < MAX_SCROLL_STEPS; step++) {
+    const options = optionsIn(dropdown, flavor, ctx.doc);
+    const hit = pick(options, wanted, 'exact') ?? pick(unbracketed(options), wanted, 'strong');
+    if (hit) return hit;
+    if (!scrollDown(list)) break;
+    await ctx.wait(POLL_MS);
+  }
+  return pick(unbracketed(optionsIn(dropdown, flavor, ctx.doc)), wanted, 'loose');
+}
+
+/** 展开下拉框 → 等选项渲染 → 用候选文字本地匹配 → 点击；任何失败都收起下拉层，不改动当前值。 */
 export async function fillCombobox(root: HTMLElement, fill: FillInstruction, ctx: FillContext): Promise<FillOutcome> {
   if (hasSelection(root)) return 'skipped';
   if (!fill.value && !(fill.candidates?.length)) return 'failed';
@@ -96,13 +149,13 @@ export async function fillCombobox(root: HTMLElement, fill: FillInstruction, ctx
   const opener = root.matches(flavor.opener) ? root : root.querySelector<HTMLElement>(flavor.opener) ?? root;
   const before = new Set(openDropdowns(flavor, ctx.doc));
   press(opener, 'mousedown', 'mouseup', 'click');
-  const dropdown = await waitForDropdown(() => currentDropdown(root, flavor, before, ctx.doc), ctx);
-  const target = pick(optionsIn(dropdown, flavor, ctx.doc), fill);
-  if (!target) {
-    await close(opener, dropdown, flavor, ctx);
-    return 'failed';
+  const dropdown = await poll(() => currentDropdown(root, flavor, before, ctx.doc), ctx.timeoutMs, ctx);
+  const target = dropdown ? await findOption(dropdown, flavor, fill, ctx) : undefined;
+  if (target) {
+    press(target, 'mousedown', 'mouseup', 'click');
+    await ctx.wait(POLL_MS);
+    if (hasSelection(root)) return 'filled';
   }
-  press(target, 'mousedown', 'mouseup', 'click');
-  await ctx.wait(POLL_MS);
-  return hasSelection(root) ? 'filled' : 'failed';
+  await close(root, opener, dropdown, flavor, ctx);
+  return 'failed';
 }

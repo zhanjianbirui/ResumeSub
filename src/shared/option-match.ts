@@ -17,18 +17,23 @@ function looseHit(label: string, key: string): boolean {
   return key.includes(label);
 }
 
+/** exact：只认整段精确匹配；strong：再加整词匹配；loose：再加中文包含式匹配（默认）。 */
+export type MatchMode = 'exact' | 'strong' | 'loose';
+
 /**
  * 依次尝试：整段精确匹配（选项文字或 value）→ 选项中的某个词精确匹配 → 中文包含式匹配。
  * 少于 2 个字符的词只参与整段精确匹配。
  */
-export function chooseOption(options: readonly FieldOption[], wanted: readonly string[]): string | null {
+export function chooseOption(options: readonly FieldOption[], wanted: readonly string[], mode: MatchMode = 'loose'): string | null {
   const candidates = options.filter((o) => o.value !== '' && !PLACEHOLDER.test(o.label.trim()));
   const keys = wanted.map(keyOf).filter(Boolean);
   const exact = candidates.find((o) => keys.includes(keyOf(o.label)) || keys.includes(keyOf(o.value)));
   if (exact) return exact.value;
+  if (mode === 'exact') return null;
   const longKeys = keys.filter((k) => k.length >= MIN_LOOSE);
   const token = candidates.find((o) => tokensOf(o.label).some((t) => longKeys.includes(t)));
   if (token) return token.value;
+  if (mode === 'strong') return null;
   const loose = candidates.find((o) => longKeys.some((k) => looseHit(keyOf(o.label), k)));
   return loose?.value ?? null;
 }

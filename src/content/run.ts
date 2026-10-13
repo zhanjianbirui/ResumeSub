@@ -44,6 +44,8 @@ async function applyAll(fields: readonly ScannedField[], fills: readonly FillIns
   let filled = 0;
   const unfilled: HTMLElement[] = [];
   for (const field of fields) {
+    // 前面的填写可能让页面移除了这个控件（切换区块、重新渲染），这时既不填也不标记。
+    if (!field.element.isConnected) continue;
     const outcome = await outcomeOf(field, bySignature.get(field.descriptor.signature), ctx);
     if (outcome === 'filled') {
       filled += 1;
@@ -89,6 +91,15 @@ export function createAutofillSession(deps: SessionDeps) {
   const unfilled = createUnfilledTracker();
   const expander = createExpander();
 
+  /** 展开失败不影响已经显示的填写结果。 */
+  function expandSafely(fresh: readonly ScannedField[], plan: Extract<PlanResponse, { status: 'ready' }>) {
+    try {
+      expander.afterFill(fresh, plan.fills, plan.counts);
+    } catch (error) {
+      console.warn('[ResumeSub] expand failed', error);
+    }
+  }
+
   const showResult = () => deps.overlay.show({ kind: 'result', filled: filledTotal, unfilled: unfilled.count() });
 
   async function runOnce(): Promise<boolean> {
@@ -102,10 +113,10 @@ export function createAutofillSession(deps: SessionDeps) {
       }
       const result = await applyAll(fresh, plan.fills, deps.fillContext ?? {});
       fresh.forEach((f) => handled.add(f.element));
-      expander.afterFill(fresh, plan.fills, plan.counts);
       filledTotal += result.filled;
       unfilled.add(result.unfilled);
       showResult();
+      expandSafely(fresh, plan);
       return true;
     } catch (error) {
       console.error('[ResumeSub] autofill failed', error);

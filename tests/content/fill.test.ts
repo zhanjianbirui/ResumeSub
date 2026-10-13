@@ -15,7 +15,7 @@ function fieldFor(html: string) {
   return field;
 }
 
-describe('applyFill', async () => {
+describe('applyFill', () => {
   it('sets text through the native setter and fires input/change', async () => {
     const field = fieldFor('<label>姓名<input name="n"></label>');
     const events: string[] = [];
