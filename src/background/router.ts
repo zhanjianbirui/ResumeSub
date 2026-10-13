@@ -36,12 +36,12 @@ function toFailure(error: unknown): Response<never> {
 
 export function createRouter(deps: RouterDeps) {
   return async function handle(raw: unknown, sender: SenderLike): Promise<Response<unknown>> {
+    const kind = classifySender(sender, deps.extId, deps.extOrigin);
+    if (kind === 'unknown') return fail('FORBIDDEN', '无权调用该接口');
     const parsed = v.safeParse(RequestSchema, raw);
     if (!parsed.success) return fail('BAD_REQUEST', '请求格式无效');
     const req = parsed.output;
-    const kind = classifySender(sender, deps.extId, deps.extOrigin);
-    const allowed = kind === 'extension' || (kind === 'content' && CONTENT_ALLOWED.has(req.type));
-    if (!allowed) return fail('FORBIDDEN', '无权调用该接口');
+    if (kind === 'content' && !CONTENT_ALLOWED.has(req.type)) return fail('FORBIDDEN', '无权调用该接口');
     try {
       return { ok: true, data: await dispatch(req, deps) };
     } catch (error) {

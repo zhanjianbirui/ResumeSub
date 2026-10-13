@@ -41,6 +41,11 @@ describe('router', () => {
     expect(await handle({ type: 'nope' }, page)).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
   });
 
+  it('rejects unknown senders with FORBIDDEN before parsing', async () => {
+    const { handle } = makeRouter();
+    expect(await handle({ type: 'nope' }, { id: 'evil' })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+  });
+
   it('forbids content scripts and unknown senders from extension-only APIs', async () => {
     const { handle } = makeRouter();
     expect(await handle({ type: 'profile.get' }, content)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });

@@ -7,7 +7,9 @@ import { createVault } from '@/background/vault/vault';
 
 export default defineBackground(() => {
   // 显式声明：session 区只允许扩展自身页面访问，content script 不可读
-  void browser.storage.session.setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' });
+  void browser.storage.session
+    .setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })
+    ?.catch((e: unknown) => console.error('[ResumeSub] setAccessLevel failed', e));
 
   const local = fromBrowserArea(browser.storage.local);
   const session = fromBrowserArea(browser.storage.session);
@@ -20,11 +22,14 @@ export default defineBackground(() => {
     },
     async () => (await prefs.get()).autoLockMinutes,
   );
-  const extOrigin = `${new URL(browser.runtime.getURL('/popup.html')).origin}/`;
+  const extOrigin = browser.runtime.getURL('/');
   const handle = createRouter({ vault, prefs, autoLock, extId: browser.runtime.id, extOrigin });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    void handle(message, sender).then(sendResponse);
+    void handle(message, sender).then(sendResponse, (error: unknown) => {
+      console.error('[ResumeSub] handler crashed', error);
+      sendResponse({ ok: false, error: { code: 'INTERNAL', message: '内部错误，请重试' } });
+    });
     return true;
   });
 

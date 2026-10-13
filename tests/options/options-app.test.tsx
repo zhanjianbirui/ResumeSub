@@ -71,6 +71,20 @@ describe('options App', () => {
     expect(saved).toEqual([{ ...emptyProfile(), basic: { ...emptyProfile().basic, name: '赵六' } }]);
   });
 
+  it('clears the saved notice when the user edits', async () => {
+    backend({
+      'profile.get': () => emptyProfile(),
+      'profile.save': () => null,
+      'prefs.get': () => ({ autoLockMinutes: 60 }),
+    });
+    render(<App />);
+    const name = await screen.findByLabelText('姓名');
+    fireEvent.click(screen.getByText('加密保存'));
+    await screen.findByText('已加密保存');
+    fireEvent.input(name, { target: { value: '钱七' } });
+    await waitFor(() => expect(screen.queryByText('已加密保存')).toBeNull());
+  });
+
   it('saves auto-lock preference', async () => {
     backend({
       'profile.get': () => emptyProfile(),

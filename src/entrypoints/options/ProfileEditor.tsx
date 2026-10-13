@@ -26,15 +26,11 @@ interface Props {
 
 type Notice = { kind: 'ok' | 'error'; text: string };
 
-export function ProfileEditor({ initial, onSave }: Props) {
-  const [draft, setDraft] = useState<Profile>(initial);
+function useSaveProfile(onSave: (profile: Profile) => Promise<void>) {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const patch = <K extends keyof Profile>(key: K) => (value: Profile[K]) =>
-    setDraft((current) => ({ ...current, [key]: value }));
-
-  const save = async () => {
+  const save = async (draft: Profile) => {
     const problem = firstIssue(draft);
     if (problem) {
       setNotice({ kind: 'error', text: problem });
@@ -49,6 +45,18 @@ export function ProfileEditor({ initial, onSave }: Props) {
     } finally {
       setSaving(false);
     }
+  };
+
+  return { notice, setNotice, saving, save };
+}
+
+export function ProfileEditor({ initial, onSave }: Props) {
+  const [draft, setDraft] = useState<Profile>(initial);
+  const { notice, setNotice, saving, save } = useSaveProfile(onSave);
+
+  const patch = <K extends keyof Profile>(key: K) => (value: Profile[K]) => {
+    setNotice(null);
+    setDraft((current) => ({ ...current, [key]: value }));
   };
 
   return (
@@ -75,7 +83,7 @@ export function ProfileEditor({ initial, onSave }: Props) {
       </section>
       <CustomFields value={draft.custom} onChange={patch('custom')} />
       <p class="row">
-        <button type="button" class="primary" disabled={saving} onClick={() => void save()}>加密保存</button>
+        <button type="button" class="primary" disabled={saving} onClick={() => void save(draft)}>加密保存</button>
         {notice && <span class={notice.kind} role="status">{notice.text}</span>}
       </p>
     </div>

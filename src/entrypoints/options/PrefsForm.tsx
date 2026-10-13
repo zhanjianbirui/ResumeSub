@@ -18,6 +18,7 @@ export function PrefsForm() {
 
   const change = async (autoLockMinutes: Prefs['autoLockMinutes']) => {
     const next: Prefs = { autoLockMinutes };
+    setError('');
     try {
       await call({ type: 'prefs.save', prefs: next });
       setPrefs(next);
