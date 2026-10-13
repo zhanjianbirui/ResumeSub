@@ -35,6 +35,20 @@ describe('parseHeader', () => {
     expect(value).toMatchObject({ name: '', phone: '13900000000', email: 'y@example.com' });
     expect(warnings.map((w) => w.path)).toEqual(['basic.name']);
   });
+
+  it('takes only phone and email from the full text, never profile links', () => {
+    const { value } = parseHeader(lines('张三'), '张三\n13900000000 y@example.com\ngithub.com/someone-else https://other.dev linkedin.com/in/x');
+    expect(value).toMatchObject({ phone: '13900000000', email: 'y@example.com' });
+    expect(value.github).toBeUndefined();
+    expect(value.linkedin).toBeUndefined();
+    expect(value.website).toBeUndefined();
+  });
+
+  it('skips a resume title line and reads a name followed by a phone number', () => {
+    expect(parseHeader(lines('个人简历', '王五 | w@example.com'), '').value.name).toBe('王五');
+    expect(parseHeader(lines('Curriculum Vitae', 'Alex Chen'), '').value.name).toBe('Alex Chen');
+    expect(parseHeader(lines('李明 13800138000'), '').value.name).toBe('李明');
+  });
 });
 
 describe('parseEducation', () => {
@@ -144,6 +158,14 @@ describe('parseSkills', () => {
     const { value, warnings } = parseSkills(lines('爱好：篮球'));
     expect(value.tools).toEqual(['篮球']);
     expect(warnings).toHaveLength(1);
+  });
+
+  it('returns a fresh object for every empty result', () => {
+    expect(parseSkills([]).value).not.toBe(parseSkills([]).value);
+  });
+
+  it('classifies spoken-language and test labels as language certificates', () => {
+    expect(parseSkills(lines('英语：CET-6', '日语：N2', 'IELTS: 7.5')).value.langCerts).toEqual(['CET-6', 'N2', '7.5']);
   });
 });
 

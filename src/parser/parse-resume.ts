@@ -23,7 +23,9 @@ function entriesOf(
 }
 
 export function parseResume(rawLines: readonly TextLine[]): ParseResult {
-  const lines = rawLines.map((l) => ({ ...l, segments: l.segments.map(normalizeText).filter(Boolean) }));
+  const lines = rawLines
+    .map((l) => ({ ...l, segments: l.segments.map(normalizeText).filter((s) => s.trim() !== '') }))
+    .filter((l) => l.segments.length > 0);
   const text = lines.map(lineText).join('\n');
   const { header, sections } = splitSections(lines);
   const basic = parseHeader(header, text);

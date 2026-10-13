@@ -5,11 +5,12 @@ const RADICALS: Readonly<Record<string, string>> = {
   '⻢': '马', '⻥': '鱼', '⻦': '鸟', '⻧': '卤', '⻨': '麦', '⻩': '黄', '⻬': '齐', '⻮': '齿', '⻰': '龙', '⻳': '龟',
 };
 const RADICAL_PATTERN = new RegExp(`[${Object.keys(RADICALS).join('')}]`, 'g');
-const CJK_GAP = /([㐀-鿿])\s+(?=[㐀-鿿])/g;
+/** 只合并“单字 空格 单字”的连续串（拆字形导出的典型形态），不合并以空格分隔的词。 */
+const CJK_GAP = /(?<![㐀-鿿])[㐀-鿿](?:\s[㐀-鿿])+(?![㐀-鿿])/g;
 
 export function normalizeText(text: string): string {
   return text
     .replace(/[⼀-⿕]/g, (ch) => ch.normalize('NFKC'))
     .replace(RADICAL_PATTERN, (ch) => RADICALS[ch] ?? ch)
-    .replace(CJK_GAP, '$1');
+    .replace(CJK_GAP, (run) => run.replace(/\s/g, ''));
 }

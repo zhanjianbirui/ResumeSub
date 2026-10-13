@@ -18,6 +18,25 @@ describe('headingKey', () => {
     expect(headingKey(line(text))).toBe(key);
   });
 
+  it.each([
+    ['【教育背景】', 'education'],
+    ['[Projects]', 'projects'],
+    ['（技能特长）', 'skills'],
+    ['01 教育背景', 'education'],
+    ['1. 实习经历', 'experience'],
+    ['一、项目经历', 'projects'],
+    ['—— 荣誉奖项 ——', 'awards'],
+    ['教育背景 / EDUCATION', 'education'],
+    ['项目经验 | Projects', 'projects'],
+    ['Education Background', 'education'],
+  ])('decorated or bilingual %s → %s', (text, key) => {
+    expect(headingKey(line(text))).toBe(key);
+  });
+
+  it('rejects bilingual lines whose parts disagree', () => {
+    expect(headingKey(line('教育背景 / Projects'))).toBeNull();
+  });
+
   it('ignores long lines and normal content', () => {
     expect(headingKey(line('教育背景以及其他很多很多很多很多很多很多很多很多的文字'))).toBeNull();
     expect(headingKey(line('参与项目开发'))).toBeNull();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeText } from '@/parser/normalize';
 import { parseResume } from '@/parser/parse-resume';
-import { lines } from '../helpers/lines';
+import { line, lines } from '../helpers/lines';
 
 describe('normalizeText', () => {
   it('maps Kangxi radicals to unified ideographs', () => {
@@ -13,6 +13,12 @@ describe('normalizeText', () => {
   it('maps CJK radicals supplement and joins split glyphs', () => {
     expect(normalizeText('美⻝')).toBe('美食');
     expect(normalizeText('⻩ 栩')).toBe('黄栩');
+  });
+
+  it('joins only runs of single split glyphs, not spaced words', () => {
+    expect(normalizeText('李 明 同学')).toBe('李明 同学');
+    expect(normalizeText('清华大学 计算机 本科')).toBe('清华大学 计算机 本科');
+    expect(normalizeText('北京 上海')).toBe('北京 上海');
   });
 
   it('keeps full-width punctuation and latin spacing', () => {
@@ -29,5 +35,11 @@ describe('parseResume with compatibility glyphs', () => {
     const result = parseResume(lines('⻩ 栩', '项⽬经历', ['系统', '2024.01 - 2024.02']));
     expect(result.profile.basic.name).toBe('黄栩');
     expect(result.profile.projects).toHaveLength(1);
+  });
+
+  it('drops lines left without segments after normalisation', () => {
+    const result = parseResume([line(['']), ...lines('李明', '13800138000')]);
+    expect(result.profile.basic.name).toBe('李明');
+    expect(result.text.split('\n')[0]).toBe('李明');
   });
 });

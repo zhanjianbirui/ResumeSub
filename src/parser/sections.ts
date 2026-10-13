@@ -24,10 +24,27 @@ const LOOKUP: ReadonlyMap<string, SectionKey> = new Map(
   ),
 );
 
+const BRACKETS = /[【】[\]()（）]/g;
+const NUMBERING = /^(?:\d{1,2}[.、)]?|[一二三四五六七八九十]{1,3}[、.])\s*/;
+const EDGE_DASHES = /^[\s\-–—_=]+|[\s\-–—_=]+$/g;
+const BILINGUAL_SPLIT = /[\s/|｜]+/;
+
+/** 去掉装饰：括号、开头的编号（01、1.、一、）以及首尾的横线。 */
+const undecorate = (text: string) =>
+  text.replace(BRACKETS, ' ').trim().replace(NUMBERING, '').replace(EDGE_DASHES, '');
+
+/** 中英双语标题（“教育背景 / EDUCATION”）：每个非空部分都指向同一个板块才接受。 */
+function bilingualKey(text: string): SectionKey | null {
+  const keys = text.split(BILINGUAL_SPLIT).filter((p) => normalize(p) !== '').map((p) => LOOKUP.get(normalize(p)));
+  const [first] = keys;
+  return first && keys.every((k) => k === first) ? first : null;
+}
+
 export function headingKey(line: TextLine): SectionKey | null {
   const text = lineText(line).trim();
   if (text.length === 0 || text.length > MAX_HEADING_LENGTH) return null;
-  return LOOKUP.get(normalize(text)) ?? null;
+  const bare = undecorate(text);
+  return LOOKUP.get(normalize(text)) ?? LOOKUP.get(normalize(bare)) ?? bilingualKey(bare);
 }
 
 export function splitSections(lines: readonly TextLine[]): {
