@@ -28,7 +28,8 @@ export async function dispatch(req: Request, d: HandlerDeps, ctx: RequestContext
     case 'vault.unlock':
       await d.vault.unlock(req.password);
       await d.autoLock.touch();
-      await d.pending.flush();
+      // 通知等待中的标签页重试，不阻塞解锁响应
+      void d.pending.flush().catch((error: unknown) => console.error('[ResumeSub] pending flush failed', error));
       return null;
     case 'vault.lock':
       await d.vault.lock();
@@ -53,11 +54,11 @@ export async function dispatch(req: Request, d: HandlerDeps, ctx: RequestContext
     }
     case 'autofill.plan': {
       if ((await d.vault.status()) !== 'unlocked') {
-        if (ctx.tabId !== undefined) d.pending.add(ctx.tabId);
+        if (ctx.tabId !== undefined) await d.pending.add(ctx.tabId);
         return { status: 'locked' };
       }
+      // 网页触发的请求不续期自动上锁：否则页面可以让档案一直保持解锁
       const data = await d.vault.read();
-      await d.autoLock.touch();
       return { status: 'ready', fills: planFills(req.fields, data) };
     }
     case 'prefs.get':

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  AUTOFILL_SCRIPT_FILE, AUTOFILL_SCRIPT_ID, createOriginCheck, grantedSites, injectIntoTabs, syncAutofillScripts,
+  AUTOFILL_SCRIPT_FILE, AUTOFILL_SCRIPT_ID, createOriginCheck, createSyncQueue, grantedSites, injectIntoTabs, syncAutofillScripts,
 } from '@/background/sites';
 
 function fakeScripting(registered: string[] = []) {
@@ -13,9 +13,17 @@ function fakeScripting(registered: string[] = []) {
   };
 }
 
+const escapeRe = (text: string) => text.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+
+/** 与 chrome.permissions.contains 一致：精确匹配，或通配符 * 匹配不含 / 的一段（E5）。 */
+function patternCovers(pattern: string, origin: string): boolean {
+  if (pattern === origin) return true;
+  return new RegExp(`^${pattern.split('*').map(escapeRe).join('[^/]*')}$`).test(origin);
+}
+
 const perms = (origins: string[]) => ({
   getAll: async () => ({ origins }),
-  contains: vi.fn(async ({ origins: [o] }: { origins: string[] }) => origins.some((p) => o?.startsWith(p.replace('/*', '')))),
+  contains: vi.fn(async ({ origins: [o] }: { origins: string[] }) => o !== undefined && origins.some((p) => patternCovers(p, o))),
 });
 
 describe('sites', () => {
@@ -57,5 +65,37 @@ describe('sites', () => {
     expect(await check('https://evil.example.org/')).toBe(false);
     expect(await check('not a url')).toBe(false);
     expect(await check('chrome://settings')).toBe(false);
+  });
+
+  it('origin check does not accept look-alike prefixes but honours wildcard presets (E5)', async () => {
+    const check = createOriginCheck(perms(['https://jobs.example.com/*', 'https://*.mokahr.com/*']));
+    expect(await check('https://jobs.example.com.evil.org/apply')).toBe(false);
+    expect(await check('https://jobs.example.community/')).toBe(false);
+    expect(await check('https://app.mokahr.com/apply')).toBe(true);
+  });
+
+  it('does not query tabs when no pattern was added (E3)', async () => {
+    const scripting = fakeScripting();
+    const tabs = { query: vi.fn(async () => [{ id: 7 }]) };
+    await injectIntoTabs(tabs, scripting, []);
+    expect(tabs.query).not.toHaveBeenCalled();
+    expect(scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('serialises sync tasks and keeps going after a failure (E3)', async () => {
+    const queue = createSyncQueue();
+    const order: string[] = [];
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const first = queue(async () => { order.push('a:start'); await gate; order.push('a:end'); });
+    const second = queue(async () => { order.push('b'); throw new Error('boom'); });
+    const third = queue(async () => { order.push('c'); return 3; });
+    await Promise.resolve();
+    expect(order).toEqual(['a:start']);
+    release();
+    await first;
+    await expect(second).rejects.toThrow('boom');
+    await expect(third).resolves.toBe(3);
+    expect(order).toEqual(['a:start', 'a:end', 'b', 'c']);
   });
 });

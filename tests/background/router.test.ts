@@ -13,7 +13,7 @@ const optionsTab = { id: EXT_ID, url: `${ORIGIN}options.html`, tab: { id: 3 } };
 const content = { id: EXT_ID, url: 'https://jobs.example.com/apply', tab: { id: 1 } };
 const PW = 'correct-horse-1';
 
-function makeRouter(vaultOverride?: Vault, allowed = true) {
+function makeRouter(vaultOverride?: Vault, allowed: boolean | ((url: string) => Promise<boolean>) = true) {
   const local = memoryArea();
   const session = memoryArea();
   const vault = vaultOverride ?? createVault({ local, session, now: () => 0, iterations: 1000 });
@@ -25,12 +25,16 @@ function makeRouter(vaultOverride?: Vault, allowed = true) {
   const pending = {
     added: [] as number[],
     flushed: 0,
-    add(tabId: number) { this.added.push(tabId); },
-    async flush() { this.flushed += 1; },
+    flushWith: (): Promise<void> => Promise.resolve(),
+    async add(tabId: number) { this.added.push(tabId); },
+    flush() {
+      this.flushed += 1;
+      return this.flushWith();
+    },
   };
   const handle = createRouter({
     vault, prefs: createPrefs(local), autoLock, pending, extId: EXT_ID, extOrigin: ORIGIN,
-    isOriginAllowed: async () => allowed,
+    isOriginAllowed: typeof allowed === 'function' ? allowed : async () => allowed,
   });
   return { handle, events, vault, pending };
 }
@@ -75,6 +79,46 @@ describe('router', () => {
   it('forbids plan requests from origins the user has not authorised', async () => {
     const { handle } = makeRouter(undefined, false);
     expect(await handle(planReq, content)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+  });
+
+  it('does not block unlock on flushing pending tabs and logs flush failures (E1)', async () => {
+    const { handle, pending } = makeRouter();
+    await handle({ type: 'vault.setup', password: PW }, page);
+    await handle({ type: 'vault.lock' }, page);
+    pending.flushWith = () => new Promise<void>(() => {});
+    expect(await handle({ type: 'vault.unlock', password: PW }, page)).toEqual({ ok: true, data: null });
+    await handle({ type: 'vault.lock' }, page);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    pending.flushWith = () => Promise.reject(new Error('storage gone'));
+    expect(await handle({ type: 'vault.unlock', password: PW }, page)).toEqual({ ok: true, data: null });
+    await vi.waitFor(() => expect(error).toHaveBeenCalled());
+    error.mockRestore();
+  });
+
+  it('does not extend the auto-lock timer on plan requests (E2)', async () => {
+    const { handle, events } = makeRouter();
+    await handle({ type: 'vault.setup', password: PW }, page);
+    events.length = 0;
+    expect(await handle(planReq, content)).toMatchObject({ ok: true });
+    expect(events).not.toContain('touch');
+  });
+
+  it('checks the content origin from sender.origin before parsing (E4)', async () => {
+    const seen: string[] = [];
+    const { handle } = makeRouter(undefined, async (url) => {
+      seen.push(url);
+      return url.startsWith('https://jobs.example.com');
+    });
+    const framed = { ...content, origin: 'https://evil.example.org', url: 'https://jobs.example.com/apply' };
+    expect(await handle({ type: 'nope' }, framed)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(seen).toEqual(['https://evil.example.org']);
+    expect(await handle({ type: 'nope' }, content)).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
+  });
+
+  it('forbids content senders without origin or url (E4)', async () => {
+    const { handle } = makeRouter();
+    expect(await handle(planReq, { id: EXT_ID, tab: { id: 1 } })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    expect(await handle(planReq, { id: EXT_ID, url: 'not a url', tab: { id: 1 } })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
   });
 
   it('rejects malformed requests', async () => {

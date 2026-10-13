@@ -4,7 +4,7 @@ import { createAutoLock, isAutoLockAlarm } from '@/background/auto-lock';
 import { createPendingTabs } from '@/background/pending';
 import { createPrefs } from '@/background/prefs';
 import { createRouter } from '@/background/router';
-import { createOriginCheck, injectIntoTabs, syncAutofillScripts } from '@/background/sites';
+import { createOriginCheck, createSyncQueue, injectIntoTabs, syncAutofillScripts } from '@/background/sites';
 import { fromBrowserArea } from '@/background/storage';
 import { createVault } from '@/background/vault/vault';
 
@@ -26,7 +26,7 @@ export default defineBackground(() => {
     async () => (await prefs.get()).autoLockMinutes,
   );
   const extOrigin = browser.runtime.getURL('/');
-  const pending = createPendingTabs((tabId) => browser.tabs.sendMessage(tabId, { type: 'autofill.retry' }));
+  const pending = createPendingTabs(session, (tabId) => browser.tabs.sendMessage(tabId, { type: 'autofill.retry' }));
   const isOriginAllowed = createOriginCheck(browser.permissions);
   const handle = createRouter({
     vault, prefs, autoLock, pending, extId: browser.runtime.id, extOrigin,
@@ -51,8 +51,9 @@ export default defineBackground(() => {
     executeScript: (injection: { target: { tabId: number; allFrames: boolean }; files: string[] }) =>
       browser.scripting.executeScript({ target: injection.target, files: injection.files as ScriptPublicPath[] }),
   };
+  const queue = createSyncQueue();
   const sync = () =>
-    syncAutofillScripts(scripting, browser.permissions).catch((e: unknown) =>
+    queue(() => syncAutofillScripts(scripting, browser.permissions)).catch((e: unknown) =>
       console.error('[ResumeSub] sync autofill scripts failed', e));
   browser.runtime.onInstalled.addListener(() => void sync());
   browser.runtime.onStartup.addListener(() => void sync());

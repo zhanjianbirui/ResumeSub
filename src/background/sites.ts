@@ -48,8 +48,21 @@ export async function syncAutofillScripts(scripting: ScriptingLike, permissions:
   else await scripting.registerContentScripts([spec]);
 }
 
+export type SyncQueue = <T>(task: () => Promise<T>) => Promise<T>;
+
+/** 串行执行同步任务：权限事件可能连续触发，并发的注册/更新会互相冲突。前一个失败不影响后一个。 */
+export function createSyncQueue(): SyncQueue {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>) => {
+    const next = tail.then(task, task);
+    tail = next.catch(() => undefined);
+    return next;
+  };
+}
+
 /** 刚授权的站点已经打开的页面不会自动注入脚本，这里补一次注入。 */
 export async function injectIntoTabs(tabs: TabsLike, scripting: ScriptingLike, patterns: string[]): Promise<void> {
+  if (patterns.length === 0) return; // tabs.query({ url: [] }) 会返回所有标签页
   const open = await tabs.query({ url: patterns });
   await Promise.all(open.map(async ({ id }) => {
     if (id === undefined) return;
