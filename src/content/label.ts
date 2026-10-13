@@ -1,9 +1,13 @@
+import { activeAdapter } from './adapters';
+import { clean } from './text';
+import { formItemLabel } from './widgets';
+
 const CONTROLS = 'input, select, textarea, button, option';
 const MAX_LABEL = 60;
 const HEADING = ':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > legend, :scope > [role="heading"], :scope > [class*="title"]';
 const MAX_SECTION_DEPTH = 8;
 
-export const clean = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim();
+export { clean };
 
 /** 祖先节点去掉所有表单控件后剩下的文字（用来处理"span + input"这种没有 label 的结构）。 */
 export function textOutsideControls(ancestor: Element): string {
@@ -28,6 +32,8 @@ function nearbyText(el: HTMLElement): string {
 }
 
 export function resolveLabel(el: HTMLElement): string {
+  const adapted = activeAdapter(el.ownerDocument.location?.href ?? '')?.labelFor?.(el);
+  if (adapted) return adapted;
   const labels = (el as HTMLInputElement).labels;
   const direct = labels && labels.length > 0 ? textOutsideControls(labels[0] as Element) : '';
   if (direct) return direct;
@@ -38,6 +44,8 @@ export function resolveLabel(el: HTMLElement): string {
   }
   const aria = clean(el.getAttribute('aria-label'));
   if (aria) return aria;
+  const item = formItemLabel(el);
+  if (item) return item;
   const near = nearbyText(el);
   if (near) return near;
   return clean(el.getAttribute('placeholder'));

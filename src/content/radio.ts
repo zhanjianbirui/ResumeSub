@@ -1,4 +1,5 @@
-import { clean, controlCount } from './label';
+import { controlCount } from './label';
+import { clean } from './text';
 
 const MAX_LABEL = 60;
 
