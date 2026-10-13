@@ -1,3 +1,5 @@
+import { ImportError } from '@/import/errors';
+import { MAX_RESUME_PAGES } from '@/shared/constants';
 import type { PositionedText } from './group-lines';
 
 interface PdfTextItem {
@@ -18,7 +20,10 @@ interface PdfDocument {
 
 /** pdf.js 中我们实际用到的最小接口；浏览器用 pdfjs-dist，测试用它的 legacy 构建。 */
 export interface PdfJsLike {
-  getDocument(params: { data: Uint8Array; verbosity?: number }): { promise: Promise<PdfDocument>; destroy(): Promise<void> };
+  getDocument(params: { data: Uint8Array; verbosity?: number; isEvalSupported?: boolean }): {
+    promise: Promise<PdfDocument>;
+    destroy(): Promise<void>;
+  };
 }
 
 function toPositioned(page: number, item: PdfTextItem): PositionedText | null {
@@ -28,9 +33,10 @@ function toPositioned(page: number, item: PdfTextItem): PositionedText | null {
 }
 
 export async function readPdfItems(data: Uint8Array, pdfjs: PdfJsLike): Promise<PositionedText[]> {
-  const task = pdfjs.getDocument({ data, verbosity: 0 });
+  const task = pdfjs.getDocument({ data, verbosity: 0, isEvalSupported: false });
   const doc = await task.promise;
   try {
+    if (doc.numPages > MAX_RESUME_PAGES) throw new ImportError('TOO_MANY_PAGES');
     const pages = await Promise.all(
       Array.from({ length: doc.numPages }, async (_, i) => {
         const content = await (await doc.getPage(i + 1)).getTextContent();

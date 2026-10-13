@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { mergeParsed } from '@/parser/merge';
 import { parseResume } from '@/parser/parse-resume';
 import { emptyEducation, emptyProfile, ProfileSchema } from '@/shared/schema/profile';
-import { EN_RESUME, lines, ZH_RESUME } from '../helpers/lines';
+import { MAX_LINE_CHARS, MAX_TEXT_CHARS } from '@/shared/constants';
+import { EN_RESUME, line, lines, ZH_RESUME } from '../helpers/lines';
 
 describe('parseResume', () => {
   it('produces a schema-valid profile from the Chinese fixture', () => {
@@ -29,6 +30,30 @@ describe('parseResume', () => {
     expect(none.warnings.map((w) => w.path)).toContain('sections');
     const orphan = parseResume(lines('张三', '教育背景', '孤立行', ['某大学', '2020.09 - 2024.06'], '物理学 本科'));
     expect(orphan.warnings.map((w) => w.path)).toContain('education');
+  });
+});
+
+describe('parseResume input bounds', () => {
+  it('parses a pathological 200k-char line quickly and still yields a valid profile', () => {
+    const huge = line('a'.repeat(100_000) + ' '.repeat(100_000));
+    const startedAt = performance.now();
+    const result = parseResume([huge, ...ZH_RESUME]);
+    expect(performance.now() - startedAt).toBeLessThan(1000);
+    expect(v.safeParse(ProfileSchema, result.profile).success).toBe(true);
+    expect(result.profile.education).toHaveLength(2);
+  });
+
+  it('truncates long segments', () => {
+    const result = parseResume(lines('李明', 'x'.repeat(MAX_LINE_CHARS + 50)));
+    expect(result.text.split('\n')[1]).toHaveLength(MAX_LINE_CHARS);
+  });
+
+  it('stops reading and warns once the total text exceeds the limit', () => {
+    const filler = Array.from({ length: Math.ceil(MAX_TEXT_CHARS / MAX_LINE_CHARS) + 5 }, () => 'y'.repeat(MAX_LINE_CHARS));
+    const result = parseResume(lines('李明', ...filler));
+    expect(result.text.length).toBeLessThanOrEqual(MAX_TEXT_CHARS + filler.length);
+    expect(result.warnings).toContainEqual({ path: 'sections', message: '简历内容过长，已截断' });
+    expect(parseResume(ZH_RESUME).warnings).toEqual([]);
   });
 });
 

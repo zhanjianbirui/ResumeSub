@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ImportError } from '@/import/errors';
 import { importResume } from '@/import/import-resume';
 import { base64ToBytes } from '@/shared/base64';
 import { MAX_RESUME_BYTES } from '@/shared/constants';
@@ -27,6 +28,11 @@ describe('importResume', () => {
 
   it('reports scanned documents without text as NO_TEXT', async () => {
     await expect(importResume(pdf(), async () => [])).rejects.toMatchObject({ code: 'NO_TEXT' });
+  });
+
+  it('passes through import errors raised by the extractor', async () => {
+    await expect(importResume(pdf(), async () => { throw new ImportError('TOO_MANY_PAGES'); }))
+      .rejects.toMatchObject({ code: 'TOO_MANY_PAGES' });
   });
 
   it('maps extraction failures to READ_FAILED and logs the cause', async () => {

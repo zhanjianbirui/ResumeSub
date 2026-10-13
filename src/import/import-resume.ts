@@ -20,6 +20,7 @@ export async function importResume(
   if (!kind) throw new ImportError('UNSUPPORTED_TYPE');
   if (file.size > MAX_RESUME_BYTES) throw new ImportError('TOO_LARGE');
   const lines = await extract(file).catch((error: unknown) => {
+    if (error instanceof ImportError) throw error;
     console.error('[ResumeSub] resume extraction failed', error);
     throw new ImportError('READ_FAILED');
   });

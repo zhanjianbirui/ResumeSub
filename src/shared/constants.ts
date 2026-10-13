@@ -20,3 +20,8 @@ export const RESUME_MIMES = {
   pdf: 'application/pdf',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 } as const;
+
+/** 解析输入上限：防止超长文档或异常行拖慢本地解析。 */
+export const MAX_RESUME_PAGES = 10;
+export const MAX_LINE_CHARS = 500;
+export const MAX_TEXT_CHARS = 100_000;

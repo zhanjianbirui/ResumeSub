@@ -36,4 +36,9 @@ describe('groupLines', () => {
   it('returns no lines for no items', () => {
     expect(groupLines([])).toEqual([]);
   });
+
+  it('handles a line with a very large number of items without overflowing the stack', () => {
+    const many = Array.from({ length: 200_000 }, (_, i) => item('a', i * 5, 700));
+    expect(groupLines(many)).toHaveLength(1);
+  });
 });

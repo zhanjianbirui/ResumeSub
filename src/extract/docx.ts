@@ -1,3 +1,5 @@
+import { ImportError } from '@/import/errors';
+import { MAX_TEXT_CHARS } from '@/shared/constants';
 import type { TextLine } from '@/shared/text-line';
 
 /** Word 简历常用 Tab 把日期推到右侧，所以 Tab 视为片段分隔。 */
@@ -12,5 +14,6 @@ export function paragraphsToLines(raw: string): TextLine[] {
 export async function extractDocx(file: Blob): Promise<TextLine[]> {
   const { extractRawText } = await import('mammoth');
   const { value } = await extractRawText({ arrayBuffer: await file.arrayBuffer() });
+  if (value.length > MAX_TEXT_CHARS) throw new ImportError('TOO_LARGE');
   return paragraphsToLines(value);
 }

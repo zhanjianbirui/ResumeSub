@@ -20,7 +20,7 @@ function sameLine(a: PositionedText, b: PositionedText): boolean {
 
 function buildLine(items: readonly PositionedText[]): TextLine {
   const sorted = [...items].sort((a, b) => a.x - b.x);
-  const size = Math.max(...sorted.map((i) => i.size));
+  const size = sorted.reduce((max, i) => Math.max(max, i.size), Number.NEGATIVE_INFINITY);
   const segments: string[] = [];
   let current = '';
   let lastEnd = Number.NEGATIVE_INFINITY;
