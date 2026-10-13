@@ -13,3 +13,10 @@ export const STORAGE_KEYS = {
   sessionKey: 'vaultKey',
   lockout: 'lockout',
 } as const;
+
+export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+export const MAX_RESUME_BASE64 = Math.ceil(MAX_RESUME_BYTES / 3) * 4;
+export const RESUME_MIMES = {
+  pdf: 'application/pdf',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+} as const;

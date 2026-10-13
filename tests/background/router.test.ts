@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createPrefs } from '@/background/prefs';
 import { classifySender, createRouter } from '@/background/router';
 import { createVault, type Vault } from '@/background/vault/vault';
+import { MAX_RESUME_BASE64 } from '@/shared/constants';
 import { emptyProfile } from '@/shared/schema/profile';
 import { memoryArea } from '../helpers/memory-area';
 
@@ -86,5 +87,26 @@ describe('router', () => {
     });
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
+  });
+
+  it('imports profile and resume file atomically', async () => {
+    const { handle } = makeRouter();
+    await handle({ type: 'vault.setup', password: PW }, page);
+    const base = emptyProfile();
+    const profile = { ...base, basic: { ...base.basic, name: '导入用户' } };
+    const file = { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'JVBERi0=' };
+    expect(await handle({ type: 'resume.import', profile, file }, page)).toEqual({ ok: true, data: null });
+    expect(await handle({ type: 'profile.get' }, page)).toMatchObject({ ok: true, data: { basic: { name: '导入用户' } } });
+  });
+
+  it('rejects resume files with unsupported mime or oversize payload', async () => {
+    const { handle } = makeRouter();
+    const profile = emptyProfile();
+    const badMime = { name: 'cv.exe', mime: 'application/x-msdownload', dataBase64: 'AA==' };
+    expect(await handle({ type: 'resume.import', profile, file: badMime }, page))
+      .toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
+    const huge = { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'A'.repeat(MAX_RESUME_BASE64 + 4) };
+    expect(await handle({ type: 'resume.import', profile, file: huge }, page))
+      .toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
   });
 });

@@ -37,6 +37,12 @@ export async function dispatch(req: Request, d: HandlerDeps): Promise<unknown> {
       await d.autoLock.touch();
       return null;
     }
+    case 'resume.import': {
+      const data = await d.vault.read();
+      await d.vault.write({ ...data, profile: req.profile, resumeFile: req.file });
+      await d.autoLock.touch();
+      return null;
+    }
     case 'prefs.get':
       return d.prefs.get();
     case 'prefs.save':

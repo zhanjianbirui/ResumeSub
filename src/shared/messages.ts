@@ -1,5 +1,6 @@
 import * as v from 'valibot';
 import { type Profile, ProfileSchema } from './schema/profile';
+import { ResumeFileSchema } from './schema/vault-data';
 import { type Prefs, PrefsSchema } from './schema/prefs';
 
 export type VaultStatus = 'uninitialized' | 'locked' | 'unlocked';
@@ -13,6 +14,7 @@ export const RequestSchema = v.variant('type', [
   v.object({ type: v.literal('profile.save'), profile: ProfileSchema }),
   v.object({ type: v.literal('prefs.get') }),
   v.object({ type: v.literal('prefs.save'), prefs: PrefsSchema }),
+  v.object({ type: v.literal('resume.import'), profile: ProfileSchema, file: ResumeFileSchema }),
 ]);
 
 export type Request = v.InferOutput<typeof RequestSchema>;
@@ -27,6 +29,7 @@ export interface ResponseMap {
   'profile.save': null;
   'prefs.get': Prefs;
   'prefs.save': null;
+  'resume.import': null;
 }
 
 export type Response<T> =

@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { MAX_RESUME_BASE64, RESUME_MIMES } from '../constants';
 import { emptyProfile, ProfileSchema } from './profile';
 
 export const AnswerSchema = v.object({
@@ -9,7 +10,13 @@ export const AnswerSchema = v.object({
   tags: v.array(v.string()),
 });
 
-export const ResumeFileSchema = v.object({ name: v.string(), mime: v.string(), dataBase64: v.string() });
+export const ResumeFileSchema = v.object({
+  name: v.pipe(v.string(), v.maxLength(255)),
+  mime: v.picklist([RESUME_MIMES.pdf, RESUME_MIMES.docx]),
+  dataBase64: v.pipe(v.string(), v.maxLength(MAX_RESUME_BASE64)),
+});
+
+export type ResumeFile = v.InferOutput<typeof ResumeFileSchema>;
 
 export const LlmSettingsSchema = v.object({
   provider: v.picklist(['anthropic', 'openai-compatible']),
