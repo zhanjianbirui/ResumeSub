@@ -1,11 +1,30 @@
 import type { FillInstruction, ResumeFileLike } from '@/shared/autofill-types';
+import { fillCombobox } from './combobox';
+import { fillDatePicker } from './datepicker';
+import { setNativeValue } from './native';
 import { radioGroup } from './radio';
 import type { ScannedField } from './scan';
+import { hasSelection } from './widgets';
+
+export { setNativeValue };
 
 export type FillOutcome = 'filled' | 'skipped' | 'failed';
 
-interface FillDeps {
+export interface FillDeps {
   makeDataTransfer?: () => DataTransfer;
+}
+
+/** 异步填写器（自定义下拉框、日期选择器）需要的环境：等待函数和每个控件最长等待时间。 */
+export interface FillContext {
+  doc: Document;
+  wait(ms: number): Promise<void>;
+  timeoutMs: number;
+}
+
+const DEFAULT_TIMEOUT_MS = 1500;
+
+export function defaultContext(doc: Document): FillContext {
+  return { doc, wait: (ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)), timeoutMs: DEFAULT_TIMEOUT_MS };
 }
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
@@ -15,14 +34,6 @@ const STRICT_TYPES = new Set(['date', 'month', 'number']);
 
 function fire(el: HTMLElement, ...types: string[]) {
   for (const type of types) el.dispatchEvent(new Event(type, { bubbles: true }));
-}
-
-/** 必须用原型上的 setter，React、Vue 才能察觉值的变化。 */
-function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string) {
-  const proto = Object.getPrototypeOf(el) as object;
-  const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-  if (setter) setter.call(el, value);
-  else el.value = value;
 }
 
 function fillText(el: HTMLInputElement | HTMLTextAreaElement, value: string): FillOutcome {
@@ -40,11 +51,11 @@ function selectIsEmpty(el: HTMLSelectElement): boolean {
   return selected.value === '' || selected.disabled || selected.hidden !== false || PLACEHOLDER_OPTION.test(selected.text.trim());
 }
 
-/** 控件当前是否已有值（文本非空、下拉非占位、单选组已选、文件已选）。 */
+/** 控件当前是否已有值（文本非空、下拉非占位、自定义下拉已选、单选组已选、文件已选）。 */
 export function hasValue(el: HTMLElement): boolean {
   if (el instanceof HTMLSelectElement) return !selectIsEmpty(el);
   if (el instanceof HTMLTextAreaElement) return el.value.trim() !== '';
-  if (!(el instanceof HTMLInputElement)) return false;
+  if (!(el instanceof HTMLInputElement)) return hasSelection(el);
   if (el.type === 'radio') return radioGroup(el).some((r) => r.checked);
   if (el.type === 'file') return (el.files?.length ?? 0) > 0;
   return el.value.trim() !== '';
@@ -89,15 +100,30 @@ function fillFile(el: HTMLInputElement, file: ResumeFileLike, deps: FillDeps): F
   return 'filled';
 }
 
-export function applyFill(field: ScannedField, fill: FillInstruction, deps: FillDeps = {}): FillOutcome {
+function fillSync(field: ScannedField, fill: FillInstruction, deps: FillDeps): FillOutcome {
   const el = field.element;
   const kind = field.descriptor.kind;
+  if (kind === 'file') return fill.file ? fillFile(el as HTMLInputElement, fill.file, deps) : 'failed';
+  if (fill.value === undefined) return 'failed';
+  if (kind === 'radio') return fillRadio(el as HTMLInputElement, fill.value);
+  if (el instanceof HTMLSelectElement) return fillSelect(el, fill.value);
+  return fillText(el as HTMLInputElement, fill.value);
+}
+
+/** 按控件类型填写；自定义下拉框和日期选择器需要等待组件渲染，所以整体是异步的。 */
+export async function applyFill(
+  field: ScannedField,
+  fill: FillInstruction,
+  options: Partial<FillContext> & FillDeps = {},
+): Promise<FillOutcome> {
+  const kind = field.descriptor.kind;
+  const ctx: FillContext = { ...defaultContext(field.element.ownerDocument), ...options };
   try {
-    if (kind === 'file') return fill.file ? fillFile(el as HTMLInputElement, fill.file, deps) : 'failed';
-    if (fill.value === undefined) return 'failed';
-    if (kind === 'radio') return fillRadio(el as HTMLInputElement, fill.value);
-    if (el instanceof HTMLSelectElement) return fillSelect(el, fill.value);
-    return fillText(el as HTMLInputElement, fill.value);
+    if (kind === 'combobox') return await fillCombobox(field.element, fill, ctx);
+    if (kind === 'datepicker') {
+      return fill.value ? await fillDatePicker(field.element as HTMLInputElement, fill.value, ctx) : 'failed';
+    }
+    return fillSync(field, fill, options);
   } catch (error) {
     console.warn('[ResumeSub] fill failed', field.descriptor.label, error);
     return 'failed';

@@ -1,5 +1,5 @@
 import type { FieldDescriptor, FillInstruction, PlanResponse } from '@/shared/autofill-types';
-import { applyFill, type FillOutcome, hasValue } from './fill';
+import { applyFill, type FillContext, type FillOutcome, hasValue } from './fill';
 import { markField } from './mark';
 import type { Overlay } from './overlay';
 import { type ScannedField, scanFields } from './scan';
@@ -9,6 +9,8 @@ export interface SessionDeps {
   doc: Document;
   requestPlan(fields: FieldDescriptor[]): Promise<PlanResponse>;
   overlay: Overlay;
+  /** 覆盖异步填写器的等待参数（测试里用更短的超时）。 */
+  fillContext?: Partial<FillContext>;
 }
 
 export function waitForStable(root: Node, quietMs = 500, maxMs = 5000): Promise<void> {
@@ -30,17 +32,18 @@ export function waitForStable(root: Node, quietMs = 500, maxMs = 5000): Promise<
   });
 }
 
-function outcomeOf(field: ScannedField, fill: FillInstruction | undefined): FillOutcome {
-  if (fill) return applyFill(field, fill);
+async function outcomeOf(field: ScannedField, fill: FillInstruction | undefined, ctx: Partial<FillContext>): Promise<FillOutcome> {
+  if (fill) return applyFill(field, fill, ctx);
   return hasValue(field.element) ? 'skipped' : 'failed';
 }
 
-function applyAll(fields: readonly ScannedField[], fills: readonly FillInstruction[]) {
+/** 逐个串行填写：自定义下拉框必须一个一个展开，不能并发。 */
+async function applyAll(fields: readonly ScannedField[], fills: readonly FillInstruction[], ctx: Partial<FillContext>) {
   const bySignature = new Map(fills.map((f) => [f.signature, f]));
   let filled = 0;
   const unfilled: HTMLElement[] = [];
   for (const field of fields) {
-    const outcome = outcomeOf(field, bySignature.get(field.descriptor.signature));
+    const outcome = await outcomeOf(field, bySignature.get(field.descriptor.signature), ctx);
     if (outcome === 'filled') {
       filled += 1;
       markField(field.element, 'filled');
@@ -95,7 +98,7 @@ export function createAutofillSession(deps: SessionDeps) {
         deps.overlay.show({ kind: 'locked' });
         return true;
       }
-      const result = applyAll(fresh, plan.fills);
+      const result = await applyAll(fresh, plan.fills, deps.fillContext ?? {});
       fresh.forEach((f) => handled.add(f.element));
       filledTotal += result.filled;
       unfilled.add(result.unfilled);

@@ -8,6 +8,25 @@ const FORM_ITEM = '.ant-form-item, .el-form-item, .form-item';
 const MAX_ITEM_CONTROLS = 2;
 const FORM_ITEM_LABEL = '.ant-form-item-label, .el-form-item__label, label';
 const MAX_LABEL = 60;
+/** 触发按钮上的这些文字表示还没选（"Select One""请选择"）。 */
+const UNSELECTED_TEXT = /^(?:select|choose|请选择|--)/i;
+/** Element Plus 2.x 的占位元素：没有 is-transparent 时里面显示的是已选项。 */
+const EL_SELECTED = '.el-select__placeholder:not(.is-transparent), .el-select__tags-text';
+
+function triggerHasText(root: HTMLElement): boolean {
+  if (root instanceof HTMLInputElement) return root.value.trim() !== '';
+  const text = clean(root.textContent);
+  return text !== '' && !UNSELECTED_TEXT.test(text);
+}
+
+/** 自定义下拉框是否已有选中项（Ant 选中项、Element Plus 已选文字/旧版输入框值、ARIA 触发按钮文字）。 */
+export function hasSelection(root: HTMLElement): boolean {
+  if (root.querySelector('.ant-select-selection-item')) return true;
+  if (clean(root.querySelector(EL_SELECTED)?.textContent) !== '') return true;
+  const input = root.querySelector<HTMLInputElement>('.el-input__inner, .el-select__input');
+  if (input && input.value.trim() !== '') return true;
+  return root.matches(ARIA_TRIGGER) || root.getAttribute('role') === 'combobox' ? triggerHasText(root) : false;
+}
 
 /** 自定义下拉框的根节点：带框架类名的容器、ARIA combobox 本身，或 listbox 触发按钮。 */
 export function comboboxRoot(el: HTMLElement): HTMLElement | null {
