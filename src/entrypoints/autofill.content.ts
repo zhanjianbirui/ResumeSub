@@ -1,21 +1,14 @@
 import { browser } from 'wxt/browser';
 import { createOverlay } from '@/content/overlay';
+import { requestPlan } from '@/content/request';
 import { createAutofillSession, waitForStable } from '@/content/run';
-import type { FieldDescriptor, PlanResponse } from '@/shared/autofill-types';
+import type { FieldDescriptor } from '@/shared/autofill-types';
 
 const LOADED_FLAG = '__resumesubAutofillLoaded';
 const RERUN_DEBOUNCE_MS = 800;
 const MAX_RUNS = 20;
 
-async function requestPlan(fields: FieldDescriptor[]): Promise<PlanResponse> {
-  const res = (await browser.runtime.sendMessage({ type: 'autofill.plan', url: location.href, fields })) as
-    | { ok: true; data: PlanResponse }
-    | { ok: false; error: { message: string } }
-    | undefined;
-  if (!res) throw new Error('no response');
-  if (!res.ok) throw new Error(res.error.message);
-  return res.data;
-}
+const plan = (fields: FieldDescriptor[]) => requestPlan((m) => browser.runtime.sendMessage(m), location, fields);
 
 export default defineContentScript({
   registration: 'runtime',
@@ -26,7 +19,7 @@ export default defineContentScript({
 
     let session: ReturnType<typeof createAutofillSession> | undefined;
     const overlay = createOverlay(document, () => session?.nextUnfilled());
-    session = createAutofillSession({ doc: document, requestPlan, overlay });
+    session = createAutofillSession({ doc: document, requestPlan: plan, overlay });
 
     await waitForStable(document.body);
     await session.run();

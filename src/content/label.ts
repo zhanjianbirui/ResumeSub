@@ -3,7 +3,7 @@ const MAX_LABEL = 60;
 const HEADING = ':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > legend, :scope > [role="heading"], :scope > [class*="title"]';
 const MAX_SECTION_DEPTH = 8;
 
-const clean = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim();
+export const clean = (text: string | null | undefined) => (text ?? '').replace(/\s+/g, ' ').trim();
 
 /** 祖先节点去掉所有表单控件后剩下的文字（用来处理"span + input"这种没有 label 的结构）。 */
 function textOutsideControls(ancestor: Element): string {
@@ -12,7 +12,7 @@ function textOutsideControls(ancestor: Element): string {
   return clean(copy.textContent);
 }
 
-function controlCount(ancestor: Element): number {
+export function controlCount(ancestor: Element): number {
   return ancestor.querySelectorAll('input:not([type="hidden"]), select, textarea').length;
 }
 

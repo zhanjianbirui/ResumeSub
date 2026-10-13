@@ -1,7 +1,9 @@
 import type { FieldDescriptor, FieldKind, FieldOption } from '@/shared/autofill-types';
 import { resolveLabel, sectionOf } from './label';
+import { radioGroup, radioGroupLabel } from './radio';
 import { repeatIndexOf } from './repeat';
 import { fnv1a } from './signature';
+import { isFileReachable, isVisible, layoutAvailable } from './visibility';
 
 export interface ScannedField {
   descriptor: FieldDescriptor;
@@ -14,6 +16,9 @@ const INPUT_KINDS: Readonly<Record<string, FieldKind>> = {
 };
 const OPEN_QUESTION = /为什么|请描述|请简述|请介绍|谈谈|自我评价|自我介绍|[?？]|\bwhy\b|describe|tell us|cover letter/i;
 const MAX_TEXT = 200;
+/** 与 shared/autofill-schema 的 MAX_FIELDS / MAX_OPTIONS 一致（content 不引入 valibot，这里复制数值）。 */
+const MAX_FIELDS = 300;
+const MAX_OPTIONS = 200;
 
 function kindOf(el: HTMLElement): FieldKind | null {
   if (el instanceof HTMLSelectElement) return 'select';
@@ -23,37 +28,20 @@ function kindOf(el: HTMLElement): FieldKind | null {
   return INPUT_KINDS[type] ?? 'text';
 }
 
-function isHidden(el: HTMLElement): boolean {
-  if (el.closest('[hidden], [aria-hidden="true"]')) return true;
-  const view = el.ownerDocument.defaultView;
-  for (let node: HTMLElement | null = el; node; node = node.parentElement) {
-    const style = view?.getComputedStyle(node);
-    if (style && (style.display === 'none' || style.visibility === 'hidden')) return true;
-  }
-  return false;
-}
-
-function isUsable(el: HTMLElement, kind: FieldKind): boolean {
+function isUsable(el: HTMLElement, kind: FieldKind, layout: boolean): boolean {
   const control = el as HTMLInputElement;
   if (control.disabled || control.readOnly) return false;
-  return kind === 'file' || !isHidden(el);
+  return kind === 'file' ? isFileReachable(control, layout) : isVisible(el, layout);
 }
 
 const cut = (text: string) => text.slice(0, MAX_TEXT);
 
 function radioOptions(group: readonly HTMLInputElement[]): FieldOption[] {
-  return group.map((radio) => ({ value: cut(radio.value), label: cut(resolveLabel(radio)) }));
+  return group.slice(0, MAX_OPTIONS).map((radio) => ({ value: cut(radio.value), label: cut(resolveLabel(radio)) }));
 }
 
-function radioGroupLabel(group: readonly HTMLInputElement[]): string {
-  const first = group[0];
-  let container: HTMLElement | null = first?.parentElement ?? null;
-  while (container && !group.every((r) => container?.contains(r))) container = container.parentElement;
-  const holder = container?.parentElement && container.tagName === 'LABEL' ? container.parentElement : container;
-  if (!holder) return '';
-  const copy = holder.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll('label, input').forEach((n) => n.remove());
-  return (copy.textContent ?? '').replace(/\s+/g, ' ').trim();
+function selectOptions(el: HTMLSelectElement): FieldOption[] {
+  return Array.from(el.options).slice(0, MAX_OPTIONS).map((o) => ({ value: cut(o.value), label: cut(o.text.trim()) }));
 }
 
 type Draft = Omit<FieldDescriptor, 'signature' | 'repeatIndex'>;
@@ -66,29 +54,33 @@ function describe(el: HTMLElement, kind: FieldKind, label: string, options?: Fie
   };
 }
 
+/** 返回 null 表示这个控件不作为独立字段上报（已处理过的单选组成员、开放式问答框）。 */
+function draftFor(el: HTMLElement, kind: FieldKind, seenRadios: Set<HTMLInputElement>): Draft | null {
+  if (kind === 'radio') {
+    const radio = el as HTMLInputElement;
+    if (!radio.name || seenRadios.has(radio)) return null;
+    const group = radioGroup(radio);
+    group.forEach((r) => seenRadios.add(r));
+    return describe(el, 'radio', radioGroupLabel(group), radioOptions(group));
+  }
+  const label = resolveLabel(el);
+  if (kind === 'textarea' && OPEN_QUESTION.test(label)) return null;
+  return describe(el, kind, label, el instanceof HTMLSelectElement ? selectOptions(el) : undefined);
+}
+
 export function scanFields(root: ParentNode): ScannedField[] {
-  const seenRadioGroups = new Set<string>();
+  const doc = (root as Node).ownerDocument ?? (root as Document);
+  const layout = layoutAvailable(doc);
+  const seenRadios = new Set<HTMLInputElement>();
   const counts = new Map<string, number>();
   const prints = new WeakMap<Element, string>();
   const result: ScannedField[] = [];
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('input, select, textarea'))) {
+    if (result.length >= MAX_FIELDS) break;
     const kind = kindOf(el);
-    if (!kind || !isUsable(el, kind)) continue;
-    let draft: Draft;
-    if (kind === 'radio') {
-      const name = (el as HTMLInputElement).name;
-      if (!name || seenRadioGroups.has(name)) continue;
-      seenRadioGroups.add(name);
-      const group = Array.from(root.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${CSS.escape(name)}"]`));
-      draft = describe(el, 'radio', radioGroupLabel(group), radioOptions(group));
-    } else {
-      const label = resolveLabel(el);
-      if (kind === 'textarea' && OPEN_QUESTION.test(label)) continue;
-      const options = el instanceof HTMLSelectElement
-        ? Array.from(el.options).map((o) => ({ value: cut(o.value), label: cut(o.text.trim()) }))
-        : undefined;
-      draft = describe(el, kind, label, options);
-    }
+    if (!kind || !isUsable(el, kind, layout)) continue;
+    const draft = draftFor(el, kind, seenRadios);
+    if (!draft) continue;
     const repeatIndex = repeatIndexOf(el, prints);
     const base = fnv1a(`${draft.label}|${draft.name}|${draft.id}|${draft.section}|${repeatIndex}`);
     const occurrence = counts.get(base) ?? 0;

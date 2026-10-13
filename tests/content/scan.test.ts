@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fnv1a } from '@/content/signature';
 import { scanFields } from '@/content/scan';
 
 afterEach(() => {
   document.body.innerHTML = '';
+  vi.restoreAllMocks();
 });
+
+const rect = (left: number, top: number, width: number, height: number) =>
+  ({ x: left, y: top, left, top, width, height, right: left + width, bottom: top + height, toJSON: () => ({}) }) as DOMRect;
 
 function mount(html: string) {
   document.body.innerHTML = html;
@@ -94,6 +98,62 @@ describe('scanFields', () => {
       <div class="sec"><h3>教育经历</h3><label>学校<input name="s"></label><label>专业<input name="m"></label></div>
     `);
     expect(fields.map((f) => f.descriptor.repeatIndex)).toEqual([0, 0, 0]);
+  });
+
+  it('skips transparent controls (C1)', () => {
+    const fields = mount('<label>姓名<input name="o" style="opacity:0"></label><label>邮箱<input name="ok"></label>');
+    expect(fields.map((f) => f.descriptor.name)).toEqual(['ok']);
+  });
+
+  it('skips zero-size and off-screen controls when layout is available (C1)', () => {
+    document.body.innerHTML = '<input name="off"><input name="tiny"><input name="ok">';
+    vi.spyOn(document.documentElement, 'getBoundingClientRect').mockReturnValue(rect(0, 0, 1024, 768));
+    const byName = (n: string) => document.querySelector(`[name="${n}"]`) as HTMLElement;
+    vi.spyOn(byName('off'), 'getBoundingClientRect').mockReturnValue(rect(-9999, 10, 200, 20));
+    vi.spyOn(byName('tiny'), 'getBoundingClientRect').mockReturnValue(rect(10, 10, 0, 0));
+    vi.spyOn(byName('ok'), 'getBoundingClientRect').mockReturnValue(rect(10, 40, 200, 20));
+    expect(scanFields(document).map((f) => f.descriptor.name)).toEqual(['ok']);
+  });
+
+  it('keeps hidden file inputs only behind a visible label or upload button (C1)', () => {
+    const fields = mount(`
+      <input type="file" name="orphan" style="display:none">
+      <label style="display:none">上传简历<input type="file" name="hiddenLabel" style="display:none"></label>
+      <label>上传简历<input type="file" name="inLabel" style="display:none"></label>
+      <label for="cv2">上传简历</label><input type="file" id="cv2" name="forLabel" hidden>
+      <span role="button">上传简历<input type="file" name="inButton" style="display:none"></span>
+    `);
+    expect(fields.map((f) => f.descriptor.name)).toEqual(['inLabel', 'forLabel', 'inButton']);
+  });
+
+  it('caps fields at 300 and options at 200 (C2)', () => {
+    const many = Array.from({ length: 305 }, (_, i) => `<label>字段${i}<input name="f${i}"></label>`).join('');
+    expect(mount(many)).toHaveLength(300);
+    const options = Array.from({ length: 250 }, (_, i) => `<option value="${i}">${i}</option>`).join('');
+    const [select] = mount(`<label>国家<select name="c">${options}</select></label>`);
+    expect(select?.descriptor.options).toHaveLength(200);
+  });
+
+  it('keys radio groups by form and name (C4)', () => {
+    const fields = mount(`
+      <form><span>性别</span><label><input type="radio" name="sex" value="m">男</label><label><input type="radio" name="sex" value="f">女</label></form>
+      <form><span>性别</span><label><input type="radio" name="sex" value="m">男</label><label><input type="radio" name="sex" value="f">女</label></form>
+    `);
+    expect(fields).toHaveLength(2);
+    expect(fields.map((f) => f.descriptor.options?.length)).toEqual([2, 2]);
+  });
+
+  it('finds radio group labels in Ant-style, aria and fieldset markup (C5)', () => {
+    const fields = mount(`
+      <div class="form-item"><label>性别</label><div class="radio-group">
+        <label><input type="radio" name="g" value="m">男</label><label><input type="radio" name="g" value="f">女</label>
+      </div></div>
+      <div role="radiogroup" aria-label="Gender"><label><input type="radio" name="a" value="m">M</label><label><input type="radio" name="a" value="f">F</label></div>
+      <span id="lbl">Willing to relocate</span>
+      <div role="radiogroup" aria-labelledby="lbl"><label><input type="radio" name="r" value="y">Yes</label><label><input type="radio" name="r" value="n">No</label></div>
+      <fieldset><legend>Sex</legend><div><label><input type="radio" name="x" value="m">M</label></div><div><label><input type="radio" name="x" value="f">F</label></div></fieldset>
+    `);
+    expect(fields.map((f) => f.descriptor.label)).toEqual(['性别', 'Gender', 'Willing to relocate', 'Sex']);
   });
 
   it('fnv1a is stable', () => {

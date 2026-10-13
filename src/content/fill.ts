@@ -1,4 +1,5 @@
 import type { FillInstruction, ResumeFileLike } from '@/shared/autofill-types';
+import { radioGroup } from './radio';
 import type { ScannedField } from './scan';
 
 export type FillOutcome = 'filled' | 'skipped' | 'failed';
@@ -8,6 +9,9 @@ interface FillDeps {
 }
 
 const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+const PLACEHOLDER_OPTION = /^(?:请选择|select|choose|--|-|—)/i;
+/** 浏览器会把这些类型里不合法的值清空，填完要回读确认。 */
+const STRICT_TYPES = new Set(['date', 'month', 'number']);
 
 function fire(el: HTMLElement, ...types: string[]) {
   for (const type of types) el.dispatchEvent(new Event(type, { bubbles: true }));
@@ -24,20 +28,28 @@ function setNativeValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectE
 function fillText(el: HTMLInputElement | HTMLTextAreaElement, value: string): FillOutcome {
   if (el.value.trim() !== '') return 'skipped';
   setNativeValue(el, value);
+  if (STRICT_TYPES.has(el.type) && el.value !== value) return 'failed';
   fire(el, 'input', 'change');
   return 'filled';
 }
 
+/** 只有"请选择"一类占位项、空值项、禁用或隐藏项被选中时才算空；默认选中的真实选项（如"中国"）视为已填。 */
+function selectIsEmpty(el: HTMLSelectElement): boolean {
+  const selected = el.selectedIndex >= 0 ? el.options[el.selectedIndex] : undefined;
+  if (!selected) return true;
+  return selected.value === '' || selected.disabled || selected.hidden !== false || PLACEHOLDER_OPTION.test(selected.text.trim());
+}
+
 function fillSelect(el: HTMLSelectElement, value: string): FillOutcome {
-  if (el.value !== '' && el.selectedIndex > 0) return 'skipped';
+  if (!selectIsEmpty(el)) return 'skipped';
   if (!Array.from(el.options).some((o) => o.value === value)) return 'failed';
   setNativeValue(el, value);
   fire(el, 'input', 'change');
   return 'filled';
 }
 
-function fillRadio(el: HTMLInputElement, value: string, root: ParentNode): FillOutcome {
-  const group = Array.from(root.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter((r) => r.name === el.name);
+function fillRadio(el: HTMLInputElement, value: string): FillOutcome {
+  const group = radioGroup(el);
   if (group.some((r) => r.checked)) return 'skipped';
   const target = group.find((r) => r.value === value);
   if (!target) return 'failed';
@@ -67,13 +79,13 @@ function fillFile(el: HTMLInputElement, file: ResumeFileLike, deps: FillDeps): F
   return 'filled';
 }
 
-export function applyFill(field: ScannedField, fill: FillInstruction, root: ParentNode, deps: FillDeps = {}): FillOutcome {
+export function applyFill(field: ScannedField, fill: FillInstruction, deps: FillDeps = {}): FillOutcome {
   const el = field.element;
   const kind = field.descriptor.kind;
   try {
     if (kind === 'file') return fill.file ? fillFile(el as HTMLInputElement, fill.file, deps) : 'failed';
     if (fill.value === undefined) return 'failed';
-    if (kind === 'radio') return fillRadio(el as HTMLInputElement, fill.value, root);
+    if (kind === 'radio') return fillRadio(el as HTMLInputElement, fill.value);
     if (el instanceof HTMLSelectElement) return fillSelect(el, fill.value);
     return fillText(el as HTMLInputElement, fill.value);
   } catch (error) {

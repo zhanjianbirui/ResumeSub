@@ -29,13 +29,13 @@ export function waitForStable(root: Node, quietMs = 500, maxMs = 5000): Promise<
   });
 }
 
-function applyAll(fields: readonly ScannedField[], fills: readonly FillInstruction[], doc: Document) {
+function applyAll(fields: readonly ScannedField[], fills: readonly FillInstruction[]) {
   const bySignature = new Map(fills.map((f) => [f.signature, f]));
   let filled = 0;
   const unfilled: HTMLElement[] = [];
   for (const field of fields) {
     const fill = bySignature.get(field.descriptor.signature);
-    const outcome = fill ? applyFill(field, fill, doc) : 'failed';
+    const outcome = fill ? applyFill(field, fill) : 'failed';
     if (outcome === 'filled') {
       filled += 1;
       markField(field.element, 'filled');
@@ -65,7 +65,7 @@ export function createAutofillSession(deps: SessionDeps) {
         deps.overlay.show({ kind: 'locked' });
         return;
       }
-      const result = applyAll(fresh, plan.fills, deps.doc);
+      const result = applyAll(fresh, plan.fills);
       handled = new Set([...handled, ...fresh.map((f) => f.descriptor.signature)]);
       filledTotal += result.filled;
       unfilled = [...unfilled.filter((el) => el.isConnected), ...result.unfilled];
