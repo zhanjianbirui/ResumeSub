@@ -45,3 +45,11 @@
 - 页面可以探测到填写浮层（固定 id 的 host 节点）以及字段上的 `data-resumesub` 标记，考虑随机化或缩短存留时间
 - 在 Firefox 上验证 `scripting.registerContentScripts` 的 `persistAcrossSessions` 行为（目前尚未在 Firefox 上验证）
 - 自定义下拉框 / combobox（Ant Design Select、Element UI 等）的填写扩展点，留到 M4
+
+# M3 遗留事项（可择机处理）
+- 只有 1 个控件的重复区块（例如每段只有一个"学校"输入框）不会被识别为区块，按第 0 条记录填写；通常网申的区块都有多个字段，影响不大
+- 重复区块判断中按标签文字包含的兜底规则可能误配，例如"姓名"和"紧急联系人姓名"分在两个同 class 的栏中
+- 单次 autofill.plan 请求只限制了字段数和选项数，没有限制总字节数；可以在 content 端限制序列化总大小
+- 跨域 iframe 防护依赖 location.ancestorOrigins，Firefox 上没有，需要另外处理
+- "研究生"同义词在没有更合适的选项时，可能把"博士研究生"选成硕士
+- 本地端到端验证方式：Playwright + Chromium 加载扩展，并临时预授权 localhost（只在验证用的副本里改，不提交），见本次会话的 scratchpad 脚本；之后可以用 /run-skill-generator 固化
