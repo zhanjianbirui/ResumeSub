@@ -1,4 +1,6 @@
 import * as v from 'valibot';
+import { AutofillPlanSchema } from './autofill-schema';
+import type { PlanResponse } from './autofill-types';
 import { type Profile, ProfileSchema } from './schema/profile';
 import { ResumeFileSchema } from './schema/vault-data';
 import { type Prefs, PrefsSchema } from './schema/prefs';
@@ -15,6 +17,7 @@ export const RequestSchema = v.variant('type', [
   v.object({ type: v.literal('prefs.get') }),
   v.object({ type: v.literal('prefs.save'), prefs: PrefsSchema }),
   v.object({ type: v.literal('resume.import'), profile: ProfileSchema, file: ResumeFileSchema }),
+  AutofillPlanSchema,
 ]);
 
 export type Request = v.InferOutput<typeof RequestSchema>;
@@ -30,6 +33,7 @@ export interface ResponseMap {
   'prefs.get': Prefs;
   'prefs.save': null;
   'resume.import': null;
+  'autofill.plan': PlanResponse;
 }
 
 export type Response<T> =

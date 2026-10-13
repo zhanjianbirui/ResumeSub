@@ -13,7 +13,7 @@ export const AnswerSchema = v.object({
 export const ResumeFileSchema = v.object({
   name: v.pipe(v.string(), v.maxLength(255)),
   mime: v.picklist([RESUME_MIMES.pdf, RESUME_MIMES.docx]),
-  dataBase64: v.pipe(v.string(), v.maxLength(MAX_RESUME_BASE64)),
+  dataBase64: v.pipe(v.string(), v.maxLength(MAX_RESUME_BASE64), v.regex(/^[A-Za-z0-9+/]*={0,2}$/, '文件数据不是合法的 base64')),
 });
 
 export type ResumeFile = v.InferOutput<typeof ResumeFileSchema>;
