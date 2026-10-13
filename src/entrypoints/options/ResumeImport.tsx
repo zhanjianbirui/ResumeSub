@@ -19,6 +19,7 @@ export function ResumeImport({ onImported }: { onImported: (result: ImportResult
     try {
       onImported(await importResume(file));
     } catch (e) {
+      if (!(e instanceof ImportError)) console.error('[ResumeSub] resume import failed', e);
       setError(importErrorText(e));
     } finally {
       setBusy(false);

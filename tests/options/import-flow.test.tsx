@@ -28,6 +28,7 @@ function backend(saved: unknown[]) {
     if (req.type === 'profile.get') return emptyProfile();
     if (req.type === 'prefs.get') return { autoLockMinutes: 60 };
     if (req.type === 'resume.import') { saved.push({ profile: req.profile, file: req.file }); return null; }
+    if (req.type === 'profile.save') return null;
     throw new Error(`unexpected ${req.type}`);
   }) as never);
 }
@@ -86,6 +87,44 @@ describe('import flow', () => {
     await chooseFile();
     await screen.findByText(/未识别到文字/);
     expect(screen.queryByText('确认导入并加密保存')).toBeNull();
+  });
+
+  it('logs unexpected failures and shows a generic message', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    backend([]);
+    const boom = new Error('boom');
+    mockImport.mockRejectedValue(boom);
+    render(<App />);
+    await chooseFile();
+    await screen.findByText('解析失败，请重试');
+    expect(spy).toHaveBeenCalledWith('[ResumeSub] resume import failed', boom);
+    spy.mockRestore();
+  });
+
+  it('does not log expected import errors', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    backend([]);
+    mockImport.mockRejectedValue(new ImportError('NO_TEXT'));
+    render(<App />);
+    await chooseFile();
+    await screen.findByText(/未识别到文字/);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('keeps a profile saved while the import was running', async () => {
+    backend([]);
+    let finish: (value: Awaited<ReturnType<typeof importResume>>) => void = () => {};
+    mockImport.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    render(<App />);
+    await chooseFile();
+    fireEvent.input(screen.getByLabelText('姓名'), { target: { value: '赵六' } });
+    fireEvent.click(screen.getByText('加密保存'));
+    await screen.findByText('已加密保存');
+    finish({ parse: { profile: parsedProfile(), warnings: [], text: '李明' }, file: FILE });
+    fireEvent.click(await screen.findByText('放弃导入'));
+    await screen.findByLabelText('选择简历文件');
+    expect((screen.getByLabelText('姓名') as HTMLInputElement).value).toBe('赵六');
   });
 
   it('cancel returns to the editor without saving', async () => {

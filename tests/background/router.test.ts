@@ -23,7 +23,7 @@ function makeRouter(vaultOverride?: Vault) {
     cancel: async () => { events.push('cancel'); },
   };
   const handle = createRouter({ vault, prefs: createPrefs(local), autoLock, extId: EXT_ID, extOrigin: ORIGIN });
-  return { handle, events };
+  return { handle, events, vault };
 }
 
 describe('classifySender', () => {
@@ -90,13 +90,16 @@ describe('router', () => {
   });
 
   it('imports profile and resume file atomically', async () => {
-    const { handle } = makeRouter();
+    const { handle, vault } = makeRouter();
     await handle({ type: 'vault.setup', password: PW }, page);
     const base = emptyProfile();
     const profile = { ...base, basic: { ...base.basic, name: '导入用户' } };
     const file = { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'JVBERi0=' };
     expect(await handle({ type: 'resume.import', profile, file }, page)).toEqual({ ok: true, data: null });
     expect(await handle({ type: 'profile.get' }, page)).toMatchObject({ ok: true, data: { basic: { name: '导入用户' } } });
+    const stored = await vault.read();
+    expect(stored.resumeFile).toEqual(file);
+    expect(stored.profile.basic.name).toBe('导入用户');
   });
 
   it('rejects resume files with unsupported mime or oversize payload', async () => {

@@ -44,6 +44,11 @@ export function App() {
     setView({ kind: 'ready', profile });
   };
 
+  /** 解析是异步的，期间用户可能已保存档案；用函数式更新读取最新视图，避免旧闭包覆盖。 */
+  const onImported = (imported: ImportResult) => {
+    setView((cur) => (cur.kind === 'ready' ? { kind: 'review', profile: cur.profile, imported } : cur));
+  };
+
   return (
     <main class="options">
       <h1>ResumeSub 档案</h1>
@@ -56,7 +61,7 @@ export function App() {
       )}
       {view.kind === 'ready' && (
         <>
-          <ResumeImport onImported={(imported) => setView({ kind: 'review', profile: view.profile, imported })} />
+          <ResumeImport onImported={onImported} />
           <ProfileEditor initial={view.profile} onSave={save} />
           <PrefsForm />
         </>
