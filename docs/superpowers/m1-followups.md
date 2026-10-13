@@ -53,3 +53,14 @@
 - 跨域 iframe 防护依赖 location.ancestorOrigins，Firefox 上没有，需要另外处理
 - "研究生"同义词在没有更合适的选项时，可能把"博士研究生"选成硕士
 - 本地端到端验证方式：Playwright + Chromium 加载扩展，并临时预授权 localhost（只在验证用的副本里改，不提交），见本次会话的 scratchpad 脚本；之后可以用 /run-skill-generator 固化
+
+# M4 遗留事项
+## 等用户提供样本后再做
+- Workday、北森专用适配器：需要在真实网申页按 Ctrl+S 保存 HTML（空白表单即可）。目前只留了 `SiteAdapter` 接口，`ADAPTERS` 为空
+
+## 可择机处理
+- "添加"按钮安全检查目前只看 `a[href]` 和 `button` 这类外层元素。`div[role=button][aria-disabled]` 这类外层元素，以及更外层的不安全元素都还没处理；没有分组名时也不检查所在板块
+- Ant 虚拟长列表：只有一个宽松匹配项、且它在第一屏时，滚到底后就找不到了，结果是"未填"（只会漏填，不会填错）
+- 日期选择器靠直接输入文字填写；只读的日期框会标为未填
+- 多选下拉框暂不支持
+- 真实浏览器验证脚本：在 scratchpad 的 `harness-e2e.sh` 中，配合 antd 和 element 测试页。建议用 /run-skill-generator 把它固化为项目技能
