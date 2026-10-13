@@ -1,0 +1,18 @@
+:root { font: 14px/1.5 system-ui, -apple-system, 'PingFang SC', sans-serif; color: #1f2328; }
+body { margin: 0; }
+.popup { width: 300px; padding: 16px; }
+.options { max-width: 880px; margin: 0 auto; padding: 24px 16px; }
+h1 { font-size: 18px; margin: 0 0 12px; }
+h2 { font-size: 15px; margin: 20px 0 8px; }
+label, .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+input, select, textarea { font: inherit; padding: 6px 8px; border: 1px solid #d0d7de; border-radius: 6px; }
+button { font: inherit; padding: 6px 12px; border-radius: 6px; border: 1px solid #d0d7de; background: #f6f8fa; cursor: pointer; }
+button[type='submit'], .primary { background: #1f6feb; color: #fff; border-color: #1f6feb; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0 12px; }
+fieldset { border: 1px solid #d0d7de; border-radius: 8px; margin-bottom: 12px; }
+.row { display: flex; gap: 8px; margin-bottom: 8px; }
+.month { display: flex; gap: 8px; align-items: center; }
+.error { color: #cf222e; }
+.ok { color: #1a7f37; }
+.warn { color: #9a6700; }
+.hint { color: #57606a; font-size: 12px; }
