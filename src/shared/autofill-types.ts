@@ -1,6 +1,6 @@
 /** content script 与 background 共用的纯类型（不引入 valibot，保持 content bundle 轻量）。 */
 export const FIELD_KINDS = [
-  'text', 'email', 'tel', 'url', 'number', 'date', 'month', 'textarea', 'select', 'radio', 'file',
+  'text', 'email', 'tel', 'url', 'number', 'date', 'month', 'textarea', 'select', 'radio', 'file', 'combobox', 'datepicker',
 ] as const;
 
 export type FieldKind = (typeof FIELD_KINDS)[number];
@@ -30,10 +30,17 @@ export interface ResumeFileLike {
   dataBase64: string;
 }
 
+export type EntryGroup = 'education' | 'experience' | 'projects';
+
 export interface FillInstruction {
   signature: string;
   value?: string;
+  /** combobox 用来匹配选项的候选文字。 */
+  candidates?: string[];
+  group?: EntryGroup;
   file?: ResumeFileLike;
 }
 
-export type PlanResponse = { status: 'locked' } | { status: 'ready'; fills: FillInstruction[] };
+export type PlanResponse =
+  | { status: 'locked' }
+  | { status: 'ready'; fills: FillInstruction[]; counts: Record<EntryGroup, number> };

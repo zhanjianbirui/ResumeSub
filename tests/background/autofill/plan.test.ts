@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chooseOption, synonymsFor } from '@/background/autofill/options';
-import { planFills } from '@/background/autofill/plan';
+import { entryCounts, planFills } from '@/background/autofill/plan';
 import { formatDate, splitName } from '@/background/autofill/values';
 import type { FieldDescriptor } from '@/shared/autofill-types';
 import { emptyEducation, emptyExperience, emptyProfile } from '@/shared/schema/profile';
@@ -89,10 +89,10 @@ describe('planFills', () => {
       desc('e2', '毕业时间', { section: '教育经历', kind: 'month', repeatIndex: 1 }),
     ], data());
     expect(fills).toEqual([
-      { signature: 's1', value: '伦敦示例大学' },
-      { signature: 'e1', value: '至今' },
-      { signature: 's2', value: '示例师范大学' },
-      { signature: 'e2', value: '2025-06' },
+      { signature: 's1', value: '伦敦示例大学', group: 'education' },
+      { signature: 'e1', value: '至今', group: 'education' },
+      { signature: 's2', value: '示例师范大学', group: 'education' },
+      { signature: 'e2', value: '2025-06', group: 'education' },
     ]);
   });
 
@@ -101,8 +101,8 @@ describe('planFills', () => {
       desc('g', '性别', { kind: 'radio', options: [{ value: 'f', label: '女' }, { value: 'm', label: '男' }] }),
       desc('d', '学历', { kind: 'select', options: [{ value: '', label: '请选择' }, { value: 'ms', label: '硕士' }] }),
     ], data());
-    expect(fills).toEqual([{ signature: 'g', value: 'm' }, { signature: 'd', value: 'ms' }]);
-    expect(planFills([desc('t', 'Degree')], data())).toEqual([{ signature: 't', value: 'Master' }]);
+    expect(fills).toEqual([{ signature: 'g', value: 'm' }, { signature: 'd', value: 'ms', group: 'education' }]);
+    expect(planFills([desc('t', 'Degree')], data())).toEqual([{ signature: 't', value: 'Master', group: 'education' }]);
   });
 
   it('fills descriptions, skills, custom fields and the resume file', () => {
@@ -113,7 +113,7 @@ describe('planFills', () => {
       desc('f', '上传简历', { kind: 'file' }),
     ], data());
     expect(fills).toEqual([
-      { signature: 'x', value: '做了 A\n做了 B' },
+      { signature: 'x', value: '做了 A\n做了 B', group: 'experience' },
       { signature: 'k', value: 'Python、Go、PyTorch' },
       { signature: 'c', value: '是' },
       { signature: 'f', file: { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'JVBERi0=' } },
@@ -196,17 +196,17 @@ describe('repeat sections (B2)', () => {
       desc('d2', '学历', { section: '教育经历', repeatIndex: 1 }),
     ], data());
     expect(fills).toEqual([
-      { signature: 'top', value: '硕士' },
-      { signature: 's1', value: '伦敦示例大学' },
-      { signature: 'd1', value: '硕士' },
-      { signature: 's2', value: '示例师范大学' },
-      { signature: 'd2', value: '本科' },
+      { signature: 'top', value: '硕士', group: 'education' },
+      { signature: 's1', value: '伦敦示例大学', group: 'education' },
+      { signature: 'd1', value: '硕士', group: 'education' },
+      { signature: 's2', value: '示例师范大学', group: 'education' },
+      { signature: 'd2', value: '本科', group: 'education' },
     ]);
   });
 
   it('blocks sent in separate plan requests keep their own entry', () => {
-    expect(planFills([desc('a', '学校名称', { repeatIndex: 0 })], data())).toEqual([{ signature: 'a', value: '伦敦示例大学' }]);
-    expect(planFills([desc('b', '学校名称', { repeatIndex: 1 })], data())).toEqual([{ signature: 'b', value: '示例师范大学' }]);
+    expect(planFills([desc('a', '学校名称', { repeatIndex: 0 })], data())).toEqual([{ signature: 'a', value: '伦敦示例大学', group: 'education' }]);
+    expect(planFills([desc('b', '学校名称', { repeatIndex: 1 })], data())).toEqual([{ signature: 'b', value: '示例师范大学', group: 'education' }]);
   });
 
   it('a block missing a field does not shift the next block', () => {
@@ -215,6 +215,34 @@ describe('repeat sections (B2)', () => {
       desc('s2', '学校名称', { section: '教育经历', repeatIndex: 1 }),
       desc('e2', '毕业时间', { section: '教育经历', repeatIndex: 1 }),
     ], data());
-    expect(fills).toContainEqual({ signature: 'e2', value: '2025-06' });
+    expect(fills).toContainEqual({ signature: 'e2', value: '2025-06', group: 'education' });
+  });
+});
+
+describe('M4 plan extensions', () => {
+  it('returns display text plus synonym candidates for comboboxes', () => {
+    const fills = planFills([desc('d', '学历', { kind: 'combobox' })], data());
+    expect(fills).toEqual([{ signature: 'd', value: '硕士', candidates: ['硕士', '研究生', 'master', "master's", 'postgraduate', 'msc'], group: 'education' }]);
+  });
+
+  it('formats datepicker values like month inputs and never sends 至今', () => {
+    const fills = planFills([
+      desc('s', '入学时间', { kind: 'datepicker', section: '教育经历' }),
+      desc('e', '毕业时间', { kind: 'datepicker', section: '教育经历' }),
+      desc('b', '出生日期', { kind: 'datepicker' }),
+    ], { ...data(), profile: { ...data().profile, basic: { ...data().profile.basic, birthDate: '2000-05-17' } } });
+    expect(fills).toEqual([
+      { signature: 's', value: '2025-09', group: 'education' },
+      { signature: 'b', value: '2000-05-17' },
+    ]);
+  });
+
+  it('tags entry fills with their group and reports entry counts', () => {
+    const fills = planFills([desc('c', '公司名称', { section: '实习经历' }), desc('n', '姓名')], data());
+    expect(fills).toEqual([
+      { signature: 'c', value: '示例科技', group: 'experience' },
+      { signature: 'n', value: '李明' },
+    ]);
+    expect(entryCounts(data())).toEqual({ education: 2, experience: 1, projects: 0 });
   });
 });

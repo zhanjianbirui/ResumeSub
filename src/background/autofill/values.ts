@@ -74,6 +74,10 @@ function renderDate(value: string, placeholder: string): string {
 
 export function formatDate(value: string, field: FieldDescriptor, english: boolean): string | null {
   if (!value) return null;
+  if (field.kind === 'datepicker') {
+    if (value === 'present') return null;
+    return /y{2,4}|m{2}|年/i.test(field.placeholder) ? renderDate(value, field.placeholder) : value;
+  }
   if (value === 'present') return field.kind === 'month' || field.kind === 'date' ? null : english ? 'Present' : '至今';
   if (field.kind === 'month') return value.slice(0, 7);
   if (field.kind === 'date') return value.length === 7 ? `${value}-01` : value;

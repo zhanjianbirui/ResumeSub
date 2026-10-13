@@ -1,7 +1,7 @@
 import type { Request } from '@/shared/messages';
 import { emptyVaultData } from '@/shared/schema/vault-data';
 import type { AutoLock } from './auto-lock';
-import { planFills } from './autofill/plan';
+import { entryCounts, planFills } from './autofill/plan';
 import type { PendingTabs } from './pending';
 import type { PrefsStore } from './prefs';
 import type { Vault } from './vault/vault';
@@ -59,7 +59,7 @@ export async function dispatch(req: Request, d: HandlerDeps, ctx: RequestContext
       }
       // 网页触发的请求不续期自动上锁：否则页面可以让档案一直保持解锁
       const data = await d.vault.read();
-      return { status: 'ready', fills: planFills(req.fields, data) };
+      return { status: 'ready', fills: planFills(req.fields, data), counts: entryCounts(data) };
     }
     case 'prefs.get':
       return d.prefs.get();

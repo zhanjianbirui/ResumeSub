@@ -17,6 +17,7 @@ function setup(plan: (fields: FieldDescriptor[]) => PlanResponse) {
 const fillByLabel = (values: Record<string, string>) => (fields: FieldDescriptor[]): PlanResponse => ({
   status: 'ready',
   fills: fields.filter((f) => values[f.label]).map((f) => ({ signature: f.signature, value: values[f.label] })),
+  counts: { education: 0, experience: 0, projects: 0 },
 });
 
 describe('autofill session', () => {

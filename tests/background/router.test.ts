@@ -62,7 +62,7 @@ describe('router', () => {
     const base = emptyProfile();
     await handle({ type: 'profile.save', profile: { ...base, basic: { ...base.basic, name: '测试用户' } } }, page);
     expect(await handle(planReq, content)).toEqual({
-      ok: true, data: { status: 'ready', fills: [{ signature: 'a', value: '测试用户' }] },
+      ok: true, data: { status: 'ready', fills: [{ signature: 'a', value: '测试用户' }], counts: { education: 0, experience: 0, projects: 0 } },
     });
   });
 
