@@ -1,0 +1,116 @@
+import { describe, expect, it } from 'vitest';
+import { chooseOption } from '@/background/autofill/options';
+import { planFills } from '@/background/autofill/plan';
+import { formatDate, splitName } from '@/background/autofill/values';
+import type { FieldDescriptor } from '@/shared/autofill-types';
+import { emptyEducation, emptyExperience, emptyProfile } from '@/shared/schema/profile';
+import { emptyVaultData, type VaultData } from '@/shared/schema/vault-data';
+
+const desc = (signature: string, label: string, extra: Partial<FieldDescriptor> = {}): FieldDescriptor => ({
+  signature, kind: 'text', label, name: '', id: '', placeholder: '', autocomplete: '', section: '', ...extra,
+});
+
+function data(): VaultData {
+  const base = emptyProfile();
+  return {
+    ...emptyVaultData(),
+    profile: {
+      ...base,
+      basic: { ...base.basic, name: '李明', nameEn: 'Ming Li', phone: '13800138000', email: 'li@example.com', gender: 'male' },
+      education: [
+        { ...emptyEducation(), school: '伦敦示例大学', degree: 'master', major: '数据科学', start: '2025-09', end: 'present' },
+        { ...emptyEducation(), school: '示例师范大学', degree: 'bachelor', major: '软件工程', start: '2021-09', end: '2025-06' },
+      ],
+      experience: [{ ...emptyExperience(), company: '示例科技', title: '实习生', start: '2023-07', end: '2023-09', bullets: ['做了 A', '做了 B'] }],
+      skills: { languages: ['Python', 'Go'], frameworks: ['PyTorch'], tools: [], langCerts: [] },
+      custom: { 是否接受调剂: '是' },
+    },
+    resumeFile: { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'JVBERi0=' },
+  };
+}
+
+describe('helpers', () => {
+  it('splitName handles Chinese, compound surnames and English names', () => {
+    expect(splitName({ name: '李明', phone: '', email: '' }, false)).toEqual({ last: '李', first: '明' });
+    expect(splitName({ name: '欧阳娜娜', phone: '', email: '' }, false)).toEqual({ last: '欧阳', first: '娜娜' });
+    expect(splitName({ name: '李明', nameEn: 'Ming Li', phone: '', email: '' }, true)).toEqual({ first: 'Ming', last: 'Li' });
+  });
+
+  it('formatDate follows the control type and placeholder style', () => {
+    const f = (extra: Partial<FieldDescriptor>) => desc('s', '开始时间', extra);
+    expect(formatDate('2025-09', f({ kind: 'month' }), false)).toBe('2025-09');
+    expect(formatDate('2025-09', f({ kind: 'date' }), false)).toBe('2025-09-01');
+    expect(formatDate('2025-09', f({ placeholder: 'YYYY/MM' }), false)).toBe('2025/09');
+    expect(formatDate('2025-09', f({ placeholder: '2020.01' }), false)).toBe('2025.09');
+    expect(formatDate('2025-09', f({ placeholder: '如 2020年1月' }), false)).toBe('2025年09月');
+    expect(formatDate('present', f({}), false)).toBe('至今');
+    expect(formatDate('present', f({}), true)).toBe('Present');
+    expect(formatDate('present', f({ kind: 'month' }), false)).toBeNull();
+    expect(formatDate('', f({}), false)).toBeNull();
+  });
+
+  it('chooseOption matches exact, then loose, ignoring placeholders', () => {
+    const options = [{ value: '', label: '请选择' }, { value: '1', label: '本科' }, { value: '2', label: '硕士研究生' }];
+    expect(chooseOption(options, ['本科', '学士'])).toBe('1');
+    expect(chooseOption(options, ['硕士', 'master'])).toBe('2');
+    expect(chooseOption(options, ['博士'])).toBeNull();
+    expect(chooseOption([{ value: 'M', label: 'M' }, { value: 'F', label: 'F' }], ['男', 'male', 'm'])).toBe('M');
+  });
+});
+
+describe('planFills', () => {
+  it('fills basic text fields and skips unmatched or empty ones', () => {
+    const fills = planFills([
+      desc('a', '姓名'), desc('b', '手机号'), desc('c', '身份证号'), desc('d', '奇怪字段'),
+    ], data());
+    expect(fills).toEqual([{ signature: 'a', value: '李明' }, { signature: 'b', value: '13800138000' }]);
+  });
+
+  it('uses English names on English forms', () => {
+    const fills = planFills([desc('a', 'First Name'), desc('b', 'Last Name'), desc('c', 'Full Name')], data());
+    expect(fills.map((f) => f.value)).toEqual(['Ming', 'Li', 'Ming Li']);
+  });
+
+  it('indexes repeated education blocks in document order and formats dates', () => {
+    const fills = planFills([
+      desc('s1', '学校名称', { section: '教育经历' }),
+      desc('e1', '毕业时间', { section: '教育经历' }),
+      desc('s2', '学校名称', { section: '教育经历' }),
+      desc('e2', '毕业时间', { section: '教育经历', kind: 'month' }),
+    ], data());
+    expect(fills).toEqual([
+      { signature: 's1', value: '伦敦示例大学' },
+      { signature: 'e1', value: '至今' },
+      { signature: 's2', value: '示例师范大学' },
+      { signature: 'e2', value: '2025-06' },
+    ]);
+  });
+
+  it('maps select/radio options by code synonyms and text fields by display value', () => {
+    const fills = planFills([
+      desc('g', '性别', { kind: 'radio', options: [{ value: 'f', label: '女' }, { value: 'm', label: '男' }] }),
+      desc('d', '学历', { kind: 'select', options: [{ value: '', label: '请选择' }, { value: 'ms', label: '硕士' }] }),
+    ], data());
+    expect(fills).toEqual([{ signature: 'g', value: 'm' }, { signature: 'd', value: 'ms' }]);
+    expect(planFills([desc('t', 'Degree')], data())).toEqual([{ signature: 't', value: 'Master' }]);
+  });
+
+  it('fills descriptions, skills, custom fields and the resume file', () => {
+    const fills = planFills([
+      desc('x', '工作内容', { section: '实习经历', kind: 'textarea' }),
+      desc('k', '专业技能'),
+      desc('c', '是否接受调剂'),
+      desc('f', '上传简历', { kind: 'file' }),
+    ], data());
+    expect(fills).toEqual([
+      { signature: 'x', value: '做了 A\n做了 B' },
+      { signature: 'k', value: 'Python、Go、PyTorch' },
+      { signature: 'c', value: '是' },
+      { signature: 'f', file: { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'JVBERi0=' } },
+    ]);
+  });
+
+  it('skips the resume file when none is stored', () => {
+    expect(planFills([desc('f', '上传简历', { kind: 'file' })], emptyVaultData())).toEqual([]);
+  });
+});
