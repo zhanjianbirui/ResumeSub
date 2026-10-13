@@ -14,7 +14,7 @@ export const STORAGE_KEYS = {
   lockout: 'lockout',
 } as const;
 
-export const MAX_RESUME_BYTES = 5 * 1024 * 1024;
+export const MAX_RESUME_BYTES = 2 * 1024 * 1024;
 export const MAX_RESUME_BASE64 = Math.ceil(MAX_RESUME_BYTES / 3) * 4;
 export const RESUME_MIMES = {
   pdf: 'application/pdf',
