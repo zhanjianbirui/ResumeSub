@@ -22,6 +22,7 @@ export function firstIssue(profile: Profile): string | null {
 interface Props {
   initial: Profile;
   onSave: (profile: Profile) => Promise<void>;
+  saveLabel?: string;
 }
 
 type Notice = { kind: 'ok' | 'error'; text: string };
@@ -50,7 +51,7 @@ function useSaveProfile(onSave: (profile: Profile) => Promise<void>) {
   return { notice, setNotice, saving, save };
 }
 
-export function ProfileEditor({ initial, onSave }: Props) {
+export function ProfileEditor({ initial, onSave, saveLabel = '加密保存' }: Props) {
   const [draft, setDraft] = useState<Profile>(initial);
   const { notice, setNotice, saving, save } = useSaveProfile(onSave);
 
@@ -83,7 +84,7 @@ export function ProfileEditor({ initial, onSave }: Props) {
       </section>
       <CustomFields value={draft.custom} onChange={patch('custom')} />
       <p class="row">
-        <button type="button" class="primary" disabled={saving} onClick={() => void save(draft)}>加密保存</button>
+        <button type="button" class="primary" disabled={saving} onClick={() => void save(draft)}>{saveLabel}</button>
         {notice && <span class={notice.kind} role="status">{notice.text}</span>}
       </p>
     </div>

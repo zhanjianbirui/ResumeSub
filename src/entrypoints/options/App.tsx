@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'preact/hooks';
+import type { ImportResult } from '@/import/import-resume';
 import { ApiError, call, errorText } from '@/shared/client';
 import type { Profile } from '@/shared/schema/profile';
 import { PrefsForm } from './PrefsForm';
 import { ProfileEditor } from './ProfileEditor';
+import { ResumeImport } from './ResumeImport';
+import { ReviewView } from './ReviewView';
 
 type View =
   | { kind: 'loading' }
   | { kind: 'blocked'; text: string }
-  | { kind: 'ready'; profile: Profile };
+  | { kind: 'ready'; profile: Profile }
+  | { kind: 'review'; profile: Profile; imported: ImportResult };
 
 function blockedText(error: unknown): string {
   if (error instanceof ApiError && error.code === 'LOCKED') {
@@ -37,6 +41,7 @@ export function App() {
 
   const save = async (profile: Profile) => {
     await call({ type: 'profile.save', profile });
+    setView({ kind: 'ready', profile });
   };
 
   return (
@@ -51,9 +56,18 @@ export function App() {
       )}
       {view.kind === 'ready' && (
         <>
+          <ResumeImport onImported={(imported) => setView({ kind: 'review', profile: view.profile, imported })} />
           <ProfileEditor initial={view.profile} onSave={save} />
           <PrefsForm />
         </>
+      )}
+      {view.kind === 'review' && (
+        <ReviewView
+          current={view.profile}
+          imported={view.imported}
+          onDone={(profile) => setView({ kind: 'ready', profile })}
+          onCancel={() => setView({ kind: 'ready', profile: view.profile })}
+        />
       )}
     </main>
   );
