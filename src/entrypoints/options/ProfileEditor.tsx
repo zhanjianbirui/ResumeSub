@@ -1,0 +1,83 @@
+import { useState } from 'preact/hooks';
+import * as v from 'valibot';
+import { errorText } from '@/shared/client';
+import {
+  emptyAward, emptyEducation, emptyExperience, emptyProject, type Profile, ProfileSchema,
+} from '@/shared/schema/profile';
+import { CustomFields } from './CustomFields';
+import {
+  AWARD_FIELDS, BASIC_FIELDS, EDUCATION_FIELDS, EXPERIENCE_FIELDS, PREFERENCES_FIELDS, PROJECT_FIELDS, SKILLS_FIELDS,
+} from './fields';
+import { ListSection } from './ListSection';
+import { ObjectForm } from './ObjectForm';
+
+export function firstIssue(profile: Profile): string | null {
+  const result = v.safeParse(ProfileSchema, profile);
+  if (result.success) return null;
+  const issue = result.issues[0];
+  const path = v.getDotPath(issue);
+  return path ? `${path}：${issue.message}` : issue.message;
+}
+
+interface Props {
+  initial: Profile;
+  onSave: (profile: Profile) => Promise<void>;
+}
+
+type Notice = { kind: 'ok' | 'error'; text: string };
+
+export function ProfileEditor({ initial, onSave }: Props) {
+  const [draft, setDraft] = useState<Profile>(initial);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const patch = <K extends keyof Profile>(key: K) => (value: Profile[K]) =>
+    setDraft((current) => ({ ...current, [key]: value }));
+
+  const save = async () => {
+    const problem = firstIssue(draft);
+    if (problem) {
+      setNotice({ kind: 'error', text: problem });
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(draft);
+      setNotice({ kind: 'ok', text: '已加密保存' });
+    } catch (error) {
+      setNotice({ kind: 'error', text: errorText(error) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <section>
+        <h2>基本信息</h2>
+        <ObjectForm fields={BASIC_FIELDS} value={draft.basic} onChange={patch('basic')} />
+      </section>
+      <ListSection title="教育经历" fields={EDUCATION_FIELDS} items={draft.education}
+        create={emptyEducation} onChange={patch('education')} itemLabel={(e) => e.school} />
+      <ListSection title="实习 / 工作经历" fields={EXPERIENCE_FIELDS} items={draft.experience}
+        create={emptyExperience} onChange={patch('experience')} itemLabel={(e) => e.company} />
+      <ListSection title="项目经历" fields={PROJECT_FIELDS} items={draft.projects}
+        create={emptyProject} onChange={patch('projects')} itemLabel={(p) => p.name} />
+      <section>
+        <h2>技能</h2>
+        <ObjectForm fields={SKILLS_FIELDS} value={draft.skills} onChange={patch('skills')} />
+      </section>
+      <ListSection title="荣誉奖项" fields={AWARD_FIELDS} items={draft.awards}
+        create={emptyAward} onChange={patch('awards')} itemLabel={(a) => a.name} />
+      <section>
+        <h2>求职偏好</h2>
+        <ObjectForm fields={PREFERENCES_FIELDS} value={draft.preferences} onChange={patch('preferences')} />
+      </section>
+      <CustomFields value={draft.custom} onChange={patch('custom')} />
+      <p class="row">
+        <button type="button" class="primary" disabled={saving} onClick={() => void save()}>加密保存</button>
+        {notice && <span class={notice.kind} role="status">{notice.text}</span>}
+      </p>
+    </div>
+  );
+}

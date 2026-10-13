@@ -1,4 +1,5 @@
 import { render } from 'preact';
 import '@/ui/base.css';
+import { App } from './App';
 
-render(<h1>ResumeSub</h1>, document.getElementById('app')!);
+render(<App />, document.getElementById('app')!);
