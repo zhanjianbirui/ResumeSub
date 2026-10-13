@@ -87,9 +87,10 @@ Profile {
 AnswerBank  = { id, question, answer, lang: 'zh'|'en', tags: string[] }[]
 SiteMapping = Record<domain, Record<fieldSignature, profilePath>>
 ResumeFile  = { name, mime, bytes }
-Settings    = { llm: { provider, baseUrl, model, apiKey }, offlineMode, autoLockMinutes,
-                enabledDomains: string[] }
+Settings    = { llm: { provider, baseUrl, model, apiKey }, offlineMode, autoLockMinutes }
 ```
+
+- 已授权自动填写的网站不存进 Settings，以 `chrome.permissions`（optional_host_permissions 的授权结果）为唯一来源；授权或撤销后后台同步 content script 的注册。
 
 - 日期统一存为 `YYYY-MM` 或 `present`，填写时再转换成目标格式。
 - 以上所有数据作为一个 vault 整体加密存储。
@@ -164,7 +165,7 @@ Settings    = { llm: { provider, baseUrl, model, apiKey }, offlineMode, autoLock
 - 解锁后，原始密钥存放在 `chrome.storage.session`（只在内存中，默认仅扩展上下文可访问）。
 - 自动上锁：用 `chrome.alarms` 实现，可选 15 分钟、1 小时（默认）或直到关闭浏览器。
 - 连续输错 5 次后冷却 30 秒。
-- 消息协议：所有消息都用 valibot 校验并检查 sender。content script 只能调用 `scan`、`fill`、`suggest` 三个接口，其余接口只允许扩展页面调用。
+- 消息协议：所有消息都用 valibot 校验并检查 sender。content script 只能调用 `autofill.plan`（M5 起增加 `suggest`），且发送页面的 origin 必须已获用户授权；其余接口只允许扩展页面调用。
 - 浮层使用 closed Shadow DOM；不使用 `eval` 和 `innerHTML`；严格 CSP；不加载远程代码。
 - 零遥测，只会请求用户配置的大模型 API。
 - 备份：导出加密的 `.resumevault` 文件；导出明文 JSON 需要再次输入密码并确认警告。

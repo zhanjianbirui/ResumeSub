@@ -34,3 +34,14 @@
 - DOCX 文本超长时复用了 TOO_LARGE，提示文案说的是文件大小，应单独给一条文本超长的提示
 - "Master of Computer Science" 这类多词学位名称的剥离；"研究生院"这类校名被误判为硕士；精确到日的日期；链接末尾带的 `)`；专业后括号里的方向说明被丢掉
 - 标题识别目前只靠词典，没有用到字号（spec §5.1），可以加入字号判断
+
+# M3 遗留事项
+
+## M5 之前必须完成
+- grantedSites / listEnabledSites / injectIntoTabs 必须排除 LLM API host（用 Prefs 维护的 LLM host 集合），避免把自动填写脚本注入到大模型接口域名，或在站点列表里把它们当成招聘网站
+
+## 可择机处理
+- 授权 `http://` 站点时提示风险（明文传输，页面可被中间人篡改后读取填入的数据）
+- 页面可以探测到填写浮层（固定 id 的 host 节点）以及字段上的 `data-resumesub` 标记，考虑随机化或缩短存留时间
+- 在 Firefox 上验证 `scripting.registerContentScripts` 的 `persistAcrossSessions` 行为（目前尚未在 Firefox 上验证）
+- 自定义下拉框 / combobox（Ant Design Select、Element UI 等）的填写扩展点，留到 M4
