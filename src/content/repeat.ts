@@ -1,41 +1,77 @@
-const CONTROLS = 'input:not([type="hidden"]), select, textarea';
+import { textOutsideControls } from './label';
+import { isVisible } from './visibility';
+
+const CONTROLS = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]), select, textarea';
 /** 与 background 的 MAX_REPEAT_INDEX 保持一致（content 不引入 valibot schema，这里复制数值）。 */
 const MAX_REPEAT_INDEX = 50;
-/** 区块标题里的序号（"教育经历 1"、"第二段"）不影响区块是否同构。 */
-const ORDINALS = /[\s\d一二三四五六七八九十]/g;
+const MAX_DEPTH = 10;
+/** 交互/校验状态类名不参与"同类区块"判断（只有某一段显示错误、被选中时也算同类）。 */
+const UNSTABLE_CLASS = /active|error|focus|hover|^is-|^has-|selected|disabled/i;
+/** name 里的数字和方括号下标（edu[0].school、school1）不影响字段是否等价。 */
+const NAME_INDEX = /\[[^\]]*\]|\d+/g;
 
-const shapeOf = (el: Element) => `${el.tagName}.${el.className}`;
+/** 一次扫描内的缓存：区块内可见控件、区块去掉控件后的文字。 */
+export interface RepeatCache {
+  controls: WeakMap<Element, HTMLElement[]>;
+  text: WeakMap<Element, string>;
+}
 
-/**
- * 区块"指纹"：其中表单控件的类型和去掉数字的 name，加上去掉序号后的文字。
- * 同一类重复区块（第 1、2 段教育经历）指纹相同；"学校""专业"这类相邻但不同的字段行指纹不同。
- */
-function fingerprint(el: Element, cache: WeakMap<Element, string>): string {
-  const cached = cache.get(el);
-  if (cached !== undefined) return cached;
-  const controls = Array.from(el.querySelectorAll<HTMLInputElement>(CONTROLS))
-    .map((c) => `${c.tagName}:${c.type}:${c.name.replace(/\d+/g, '')}`)
-    .join(',');
-  const value = `${controls}|${(el.textContent ?? '').replace(ORDINALS, '')}`;
-  cache.set(el, value);
+export const createRepeatCache = (): RepeatCache => ({ controls: new WeakMap(), text: new WeakMap() });
+
+function visibleControls(node: Element, cache: RepeatCache): HTMLElement[] {
+  const cached = cache.controls.get(node);
+  if (cached) return cached;
+  const value = Array.from(node.querySelectorAll<HTMLElement>(CONTROLS)).filter((c) => isVisible(c, false));
+  cache.controls.set(node, value);
   return value;
 }
 
-function repeatPeers(node: Element, cache: WeakMap<Element, string>): Element[] {
-  const parent = node.parentElement;
-  if (!parent) return [];
-  const shape = shapeOf(node);
-  const sameShape = Array.from(parent.children).filter((c) => shapeOf(c) === shape && c.querySelector(CONTROLS));
-  if (sameShape.length < 2) return [];
-  const print = fingerprint(node, cache);
-  return sameShape.filter((c) => fingerprint(c, cache) === print);
+function blockText(node: Element, cache: RepeatCache): string {
+  const cached = cache.text.get(node);
+  if (cached !== undefined) return cached;
+  const value = textOutsideControls(node);
+  cache.text.set(node, value);
+  return value;
 }
 
-/** 从字段往上找最近的"重复区块"：父节点下有 ≥2 个标签、class、结构都相同且含表单控件的兄弟。 */
-export function repeatIndexOf(el: HTMLElement, cache: WeakMap<Element, string> = new WeakMap()): number {
-  for (let node: Element | null = el; node && node.parentElement; node = node.parentElement) {
-    const peers = repeatPeers(node, cache);
-    if (peers.length >= 2) return Math.min(peers.indexOf(node), MAX_REPEAT_INDEX);
+const stableClasses = (el: Element) =>
+  Array.from(el.classList).filter((token) => !UNSTABLE_CLASS.test(token)).sort().join(' ');
+
+const typeOf = (el: Element) => `${el.tagName}:${(el as HTMLInputElement).type ?? ''}`;
+const normalizedName = (el: Element) => ((el as HTMLInputElement).name ?? '').replace(NAME_INDEX, '');
+
+/** 与 node 同标签、同稳定类名、可见且含控件的兄弟（含 node 自身），按文档顺序。 */
+function peersOf(node: Element, cache: RepeatCache): Element[] {
+  const parent = node.parentElement;
+  if (!parent) return [node];
+  const shape = `${node.tagName}.${stableClasses(node)}`;
+  return Array.from(parent.children).filter((c) => c === node || (
+    `${c.tagName}.${stableClasses(c)}` === shape
+    && isVisible(c as HTMLElement, false)
+    && visibleControls(c, cache).length > 0));
+}
+
+/** 区块里有没有与 el 等价的控件：同标签同类型，且 name（去下标后）相同或区块文字里出现 el 的标签。 */
+function hasEquivalent(peer: Element, el: HTMLElement, label: string, cache: RepeatCache): boolean {
+  if (peer.contains(el)) return true;
+  const name = normalizedName(el);
+  const sameKind = visibleControls(peer, cache).filter((c) => typeOf(c) === typeOf(el));
+  if (sameKind.length === 0) return false;
+  if (name && sameKind.some((c) => normalizedName(c) === name)) return true;
+  return label !== '' && blockText(peer, cache).includes(label);
+}
+
+/**
+ * 从字段往上找最近的"重复区块"：区块至少含 2 个可见控件（排除日期范围这类单控件包装），
+ * 并且至少有 2 个同类兄弟区块含有与该字段等价的控件。返回该区块在这些区块中的序号，找不到为 0。
+ */
+export function repeatIndexOf(el: HTMLElement, label: string, cache: RepeatCache = createRepeatCache()): number {
+  let node: Element | null = el.parentElement;
+  for (let depth = 0; node && depth < MAX_DEPTH; depth++, node = node.parentElement) {
+    if (visibleControls(node, cache).length < 2) continue;
+    const block = node;
+    const matching = peersOf(block, cache).filter((peer) => hasEquivalent(peer, el, label, cache));
+    if (matching.length >= 2) return Math.min(matching.indexOf(block), MAX_REPEAT_INDEX);
   }
   return 0;
 }

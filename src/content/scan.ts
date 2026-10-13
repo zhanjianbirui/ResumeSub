@@ -1,7 +1,7 @@
 import type { FieldDescriptor, FieldKind, FieldOption } from '@/shared/autofill-types';
 import { resolveLabel, sectionOf } from './label';
 import { radioGroup, radioGroupLabel } from './radio';
-import { repeatIndexOf } from './repeat';
+import { createRepeatCache, repeatIndexOf } from './repeat';
 import { fnv1a } from './signature';
 import { isFileReachable, isVisible, layoutAvailable } from './visibility';
 
@@ -73,7 +73,7 @@ export function scanFields(root: ParentNode): ScannedField[] {
   const layout = layoutAvailable(doc);
   const seenRadios = new Set<HTMLInputElement>();
   const counts = new Map<string, number>();
-  const prints = new WeakMap<Element, string>();
+  const repeatCache = createRepeatCache();
   const result: ScannedField[] = [];
   for (const el of Array.from(root.querySelectorAll<HTMLElement>('input, select, textarea'))) {
     if (result.length >= MAX_FIELDS) break;
@@ -81,7 +81,7 @@ export function scanFields(root: ParentNode): ScannedField[] {
     if (!kind || !isUsable(el, kind, layout)) continue;
     const draft = draftFor(el, kind, seenRadios);
     if (!draft) continue;
-    const repeatIndex = repeatIndexOf(el, prints);
+    const repeatIndex = repeatIndexOf(el, draft.label, repeatCache);
     const base = fnv1a(`${draft.label}|${draft.name}|${draft.id}|${draft.section}|${repeatIndex}`);
     const occurrence = counts.get(base) ?? 0;
     counts.set(base, occurrence + 1);
