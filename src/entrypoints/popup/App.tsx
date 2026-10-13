@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { browser } from 'wxt/browser';
 import { call, errorText } from '@/shared/client';
 import type { VaultStatus } from '@/shared/messages';
+import { SiteToggle } from './SiteToggle';
 import { SetupForm } from './SetupForm';
 import { UnlockForm } from './UnlockForm';
 
@@ -36,11 +37,14 @@ export function App() {
         <UnlockForm onSubmit={(password) => void run(() => call({ type: 'vault.unlock', password }))} />
       )}
       {status === 'unlocked' && (
-        <div class="row">
-          <p>✅ 已解锁</p>
-          <button type="button" onClick={() => void browser.runtime.openOptionsPage()}>编辑档案</button>
-          <button type="button" onClick={() => void run(() => call({ type: 'vault.lock' }))}>立即上锁</button>
-        </div>
+        <>
+          <div class="row">
+            <p>✅ 已解锁</p>
+            <button type="button" onClick={() => void browser.runtime.openOptionsPage()}>编辑档案</button>
+            <button type="button" onClick={() => void run(() => call({ type: 'vault.lock' }))}>立即上锁</button>
+          </div>
+          <SiteToggle />
+        </>
       )}
       {error && <p class="error" role="alert">{error}</p>}
     </main>

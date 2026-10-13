@@ -4,6 +4,7 @@ import { ApiError, call, errorText } from '@/shared/client';
 import type { Profile } from '@/shared/schema/profile';
 import { PrefsForm } from './PrefsForm';
 import { ProfileEditor } from './ProfileEditor';
+import { SitesForm } from './SitesForm';
 import { ResumeImport } from './ResumeImport';
 import { ReviewView } from './ReviewView';
 
@@ -64,6 +65,7 @@ export function App() {
           <ResumeImport onImported={onImported} />
           <ProfileEditor initial={view.profile} onSave={save} />
           <PrefsForm />
+          <SitesForm />
         </>
       )}
       {view.kind === 'review' && (
