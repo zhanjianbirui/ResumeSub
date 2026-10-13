@@ -78,6 +78,35 @@ describe('splitEntries', () => {
     expect(orphans.map(lineText)).toEqual(['孤立的一行']);
   });
 
+  it('keeps wrapped bullet continuations with numbers or year ranges inside the bullet', () => {
+    const { entries } = splitEntries(lines(
+      ['示例公司 – 后端实习生', '2023.07 - 2023.09'],
+      '• 优化接口性能，平均',
+      '耗时从 2000-2500ms 降到 300ms',
+      '• 维护 2019 - 2020 年的',
+      '历史数据 2019 - 2020 版本迁移',
+    ));
+    expect(entries).toHaveLength(1);
+    expect(entries[0]!.bullets).toEqual(['优化接口性能，平均耗时从 2000-2500ms 降到 300ms', '维护 2019 - 2020 年的历史数据 2019 - 2020 版本迁移']);
+  });
+
+  it('starts entries at numbered heads with a date range, but not at symbol bullets', () => {
+    const { entries, orphans } = splitEntries(lines(
+      '1. 智能客服系统 2023.03 - 2023.06',
+      '• 搭建意图识别模块 2023.04 - 2023.05',
+      '2. 推荐系统 2023.07 - 2023.09',
+    ));
+    expect(orphans).toEqual([]);
+    expect(entries.map(entryTitle)).toEqual(['智能客服系统', '推荐系统']);
+    expect(entries[0]!.range).toMatchObject({ start: '2023-03', end: '2023-06' });
+    expect(entries[0]!.bullets).toEqual(['搭建意图识别模块 2023.04 - 2023.05']);
+  });
+
+  it('still starts a new entry after bullets for a right-aligned year-only range', () => {
+    const { entries } = splitEntries(lines(['Chess Engine', '2022 – 2023'], '- Alpha-beta', ['Go Bot', '2020 – 2021'], '- MCTS'));
+    expect(entries.map(entryTitle)).toEqual(['Chess Engine', 'Go Bot']);
+  });
+
   it('handles the English fixture', () => {
     const { sections } = splitSections(EN_RESUME);
     const { entries } = splitEntries(sections.experience ?? []);

@@ -44,16 +44,40 @@ function appendLine(entry: Entry, line: TextLine): Entry {
   return { ...entry, subs: [...entry.subs, line] };
 }
 
-/** 不以项目符号开头、且包含日期范围的行，视为一个新条目的头行。 */
+const NUMBERED = /^\s*\d{1,2}[.)、](?=\s|[^\d])\s*/;
+
+/** 编号行（“1. 项目名 2023.03 - 2023.06”）去掉编号后可以作为条目头行。 */
+function stripNumbering(line: TextLine): TextLine {
+  const [first = '', ...rest] = line.segments;
+  return { ...line, segments: [first.replace(NUMBERED, '').trim(), ...rest].filter(Boolean) };
+}
+
+/** 判断一行能否作为新条目的头行；返回头行（编号已去掉）和日期范围。 */
+function asHead(line: TextLine, current: Entry | undefined): { head: TextLine; range: DateRange } | null {
+  const text = lineText(line);
+  if (NUMBERED.test(text)) {
+    const head = stripNumbering(line);
+    const range = findDateRange(lineText(head));
+    return range ? { head, range } : null;
+  }
+  if (isBullet(text)) return null;
+  const range = findDateRange(text);
+  if (!range) return null;
+  // 已有要点时，单片段且只有年份的行更可能是要点的换行续接（如“2019 - 2020 版本迁移”）
+  const continuesBullet = Boolean(current && current.bullets.length > 0) && line.segments.length < 2;
+  return continuesBullet && range.approximate ? null : { head: line, range };
+}
+
+/** 不以项目符号开头（编号行除外）、且包含日期范围的行，视为一个新条目的头行。 */
 export function splitEntries(lines: readonly TextLine[]): { entries: Entry[]; orphans: TextLine[] } {
   const entries: Entry[] = [];
   const orphans: TextLine[] = [];
   for (const line of lines) {
-    const text = lineText(line);
-    const range = isBullet(text) ? null : findDateRange(text);
-    if (range) entries.push({ head: line, range, subs: [], bullets: [] });
-    else if (entries.length === 0) orphans.push(line);
-    else entries[entries.length - 1] = appendLine(entries[entries.length - 1] as Entry, line);
+    const current = entries[entries.length - 1];
+    const head = asHead(line, current);
+    if (head) entries.push({ ...head, subs: [], bullets: [] });
+    else if (!current) orphans.push(line);
+    else entries[entries.length - 1] = appendLine(current, line);
   }
   return { entries, orphans };
 }

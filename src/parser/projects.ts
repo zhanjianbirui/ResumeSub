@@ -4,13 +4,14 @@ import { type Entry, entryTitle } from './entries';
 import { splitTrailing } from './text';
 import { type Parsed, warnings } from './types';
 
-const TECH_SEPARATOR = /\s*[·•|｜、/]\s*/;
+const TECH_SEPARATOR = /\s*[·•|｜、]\s*/;
 const MAX_BARE_TECH_LENGTH = 30;
+const MAX_TECH_LIST_LENGTH = 80;
 const ROLE_HINT = /负责人|成员|组长|队长|个人项目|团队项目|\blead\b|\bmember\b|\bowner\b|\bindividual\b|\bteam\b/i;
 
-/** 副行如果是用分隔符列出的短语，或者是很短的一段文字，就当作技术栈；否则当作描述。 */
+/** 副行如果是用分隔符列出的不太长的短语，或者是很短的一段文字，就当作技术栈；否则当作描述。 */
 function isTechLine(text: string): boolean {
-  return TECH_SEPARATOR.test(text) || text.length <= MAX_BARE_TECH_LENGTH;
+  return (TECH_SEPARATOR.test(text) && text.length <= MAX_TECH_LIST_LENGTH) || text.length <= MAX_BARE_TECH_LENGTH;
 }
 
 function parseEntry(entry: Entry, index: number): Parsed<Project> {

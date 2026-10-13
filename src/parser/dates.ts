@@ -5,7 +5,8 @@ const MONTHS: Readonly<Record<string, number>> = {
 const TOKEN = new RegExp(
   [
     String.raw`(\d{4})\s*[./\-年]\s*(1[0-2]|0?[1-9])(?!\d)\s*月?`,
-    String.raw`\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{4})`,
+    String.raw`(?<!\d)(1[0-2]|0?[1-9])\s*[./]\s*(\d{4})(?!\d)`,
+    String.raw`\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?\s+(\d{4})`,
     String.raw`(至今|现在|目前|\bpresent\b|\bnow\b|\bcurrent\b)`,
     String.raw`(?<!\d)((?:19|20)\d{2})(?!\d)`,
   ].join('|'),
@@ -34,9 +35,10 @@ function toToken(m: RegExpMatchArray): Token {
   const start = m.index ?? 0;
   const end = start + m[0].length;
   if (m[1]) return { value: `${m[1]}-${pad(m[2])}`, kind: 'month', start, end };
-  if (m[3]) return { value: `${m[4]}-${pad(MONTHS[m[3].toLowerCase()])}`, kind: 'month', start, end };
-  if (m[5]) return { value: 'present', kind: 'present', start, end };
-  return { value: m[6] ?? '', kind: 'year', start, end };
+  if (m[3]) return { value: `${m[4]}-${pad(m[3])}`, kind: 'month', start, end };
+  if (m[5]) return { value: `${m[6]}-${pad(MONTHS[m[5].slice(0, 3).toLowerCase()])}`, kind: 'month', start, end };
+  if (m[7]) return { value: 'present', kind: 'present', start, end };
+  return { value: m[8] ?? '', kind: 'year', start, end };
 }
 
 const tokensOf = (text: string): Token[] => [...text.matchAll(TOKEN)].map(toToken);

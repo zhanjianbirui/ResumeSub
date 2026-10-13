@@ -76,6 +76,19 @@ describe('parseExperience', () => {
     expect(value[0]).toMatchObject({ company: 'Globex', title: 'Backend Engineer', type: 'fulltime', bullets: ['Shipped X'] });
   });
 
+  it('only treats whole intern words as internships', () => {
+    const typeOf = (head: string) => parseExperience(splitEntries(lines([head, '2020.01 - 2021.01'])).entries).value[0]?.type;
+    expect(typeOf('International Paper | Analyst')).toBe('fulltime');
+    expect(typeOf('Acme | Internal Tools Engineer')).toBe('fulltime');
+    expect(typeOf('Acme | Software Engineer Intern')).toBe('intern');
+    expect(typeOf('Acme | Summer Internship')).toBe('intern');
+  });
+
+  it('splits a trailing location off the title sub line', () => {
+    const { value } = parseExperience(splitEntries(lines(['Globex', '2020.01 - 2021.01'], ['Backend Engineer', 'Berlin'])).entries);
+    expect(value[0]).toMatchObject({ company: 'Globex', title: 'Backend Engineer', location: 'Berlin', bullets: [] });
+  });
+
   it('parses English experience', () => {
     expect(parseExperience(entriesOf('experience', en)).value[0]).toMatchObject({
       company: 'Acme Corp', title: 'Software Engineer Intern', type: 'intern', start: '2023-06', end: '2023-08',
@@ -98,6 +111,16 @@ describe('parseProjects', () => {
     expect(warnings.map((w) => w.path)).toEqual(['projects.0.start']);
     const prose = parseProjects(splitEntries(lines(['X', '2020.01 - 2020.02'], '这是一段很长的项目描述，没有任何技术栈分隔符，用来说明项目背景')).entries);
     expect(prose.value[0]).toMatchObject({ tech: [], bullets: ['这是一段很长的项目描述，没有任何技术栈分隔符，用来说明项目背景'] });
+  });
+
+  it('keeps slashes inside tech names and treats long enumerated prose as bullets', () => {
+    const tech = parseProjects(splitEntries(lines(['X', '2020.01 - 2020.02'], 'Python · CI/CD · Docker')).entries);
+    expect(tech.value[0]?.tech).toEqual(['Python', 'CI/CD', 'Docker']);
+    const long = '负责数据清洗、特征工程和模型训练的完整流程以及上线后的持续监控与迭代优化工作，保障效果稳定提升，'
+      + '同时整理实验记录、撰写技术文档并与产品和运营团队定期同步指标变化情况';
+    expect(long.length).toBeGreaterThan(80);
+    const prose = parseProjects(splitEntries(lines(['X', '2020.01 - 2020.02'], long)).entries);
+    expect(prose.value[0]).toMatchObject({ tech: [], bullets: [long] });
   });
 });
 

@@ -29,6 +29,20 @@ describe('findDateRange', () => {
     expect(findDateRange('2021.13 - 2022.01')).toBeNull();
   });
 
+  it('does not read month names out of words like Junior/Marketing/Mayor', () => {
+    expect(findDateRange('Junior 2022 – 2023')).toMatchObject({ start: '2022-01', end: '2023-12', approximate: true });
+    expect(findDateRange('Marketing 2020 – 2021')).toMatchObject({ start: '2020-01', approximate: true });
+    expect(findDateRange('Mayor 2020 – 2021')).toMatchObject({ start: '2020-01', approximate: true });
+    expect(findDateRange('September 2021 – May 2022')).toMatchObject({ start: '2021-09', end: '2022-05', approximate: false });
+    expect(findDateRange('Sept. 2021 – Mar 2022')).toMatchObject({ start: '2021-09', end: '2022-03', approximate: false });
+  });
+
+  it('parses UK/EU MM/YYYY and MM.YYYY forms', () => {
+    expect(findDateRange('09/2023 – 06/2024')).toMatchObject({ start: '2023-09', end: '2024-06', approximate: false });
+    expect(findDateRange('9.2023 - 12.2023')).toMatchObject({ start: '2023-09', end: '2023-12', approximate: false });
+    expect(findDateRange('2023.09 - 2024.01')).toMatchObject({ start: '2023-09', end: '2024-01' });
+  });
+
   it('removeRange strips the range from the line', () => {
     const text = '示例大学 2021.09 – 2025.06';
     expect(removeRange(text, findDateRange(text)!)).toBe('示例大学');

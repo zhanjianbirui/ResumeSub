@@ -1,20 +1,27 @@
 import type { Experience } from '@/shared/schema/profile';
 import { lineText } from '@/shared/text-line';
 import { type Entry, entryTitle } from './entries';
-import { splitOnce } from './text';
+import { splitOnce, splitTrailing } from './text';
 import { type Parsed, warnings } from './types';
 
 const TITLE_SEPARATOR = /\s+[–—-]\s+|\s*[|｜]\s*/;
-const INTERN = /实习|intern/i;
+const INTERN = /实习|\bintern(?:ship)?s?\b/i;
+
+/** 头行没有分隔符时，职位在第一行副行；副行右侧片段通常是地点。 */
+function subTitle(entry: Entry): [string, string | undefined] {
+  return entry.subs[0] ? splitTrailing(entry.subs[0]) : ['', undefined];
+}
 
 function parseEntry(entry: Entry, index: number): Parsed<Experience> {
   const title = entryTitle(entry);
   const split = splitOnce(title, TITLE_SEPARATOR);
-  const [company, role] = split ?? [title, entry.subs[0] ? lineText(entry.subs[0]) : ''];
+  const [role, location] = split ? [split[1], undefined] : subTitle(entry);
+  const company = split ? split[0] : title;
   const extraSubs = split ? entry.subs : entry.subs.slice(1);
   const value: Experience = {
     company,
     title: role,
+    ...(location ? { location } : {}),
     start: entry.range?.start ?? '',
     end: entry.range?.end ?? '',
     type: INTERN.test(`${company} ${role}`) ? 'intern' : 'fulltime',
