@@ -1,6 +1,6 @@
 export type OverlayState =
   | { kind: 'empty' }
-  | { kind: 'result'; filled: number; unfilled: number }
+  | { kind: 'result'; filled: number; unfilled: number; review?: number }
   | { kind: 'error'; message: string };
 
 export interface Overlay {
@@ -20,7 +20,8 @@ const CSS = `
 function describeState(state: OverlayState): { text: string; tone: string } {
   if (state.kind === 'empty') return { text: '还没有档案：点击浏览器工具栏中的 ResumeSub 图标导入简历', tone: 'warn' };
   if (state.kind === 'error') return { text: `自动填写失败：${state.message}`, tone: 'error' };
-  return { text: `已填 ${state.filled} · 未填 ${state.unfilled}（点击跳到未填字段）`, tone: '' };
+  const review = state.review ? `（其中 ${state.review} 项为 AI 推断，黄框请核对）` : '';
+  return { text: `已填 ${state.filled}${review} · 未填 ${state.unfilled}（点击跳到未填字段）`, tone: '' };
 }
 
 export function createOverlay(doc: Document, onNext: () => void): Overlay {

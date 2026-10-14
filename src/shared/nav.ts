@@ -1,6 +1,6 @@
 import { browser } from 'wxt/browser';
 
-export type OptionsTab = 'profile' | 'import' | 'sites' | 'data';
+export type OptionsTab = 'profile' | 'import' | 'sites' | 'ai' | 'data';
 
 /** 在新标签页打开设置页的某一页（openOptionsPage 不支持带 hash）。 */
 export function openOptions(tab: OptionsTab): void {

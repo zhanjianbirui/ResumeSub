@@ -39,16 +39,27 @@ function autocompletePath(autocomplete: string): FieldPath | undefined {
   return AUTOCOMPLETE[token];
 }
 
-export function matchField(desc: FieldDescriptor, customKeys: readonly string[]): FieldPath | null {
+/**
+ * 'skip'：明确不能填（他人信息栏、验证码、应聘岗位等，或文件框）——也不交给大模型；
+ * null：规则没认出来，可以交给大模型兜底。
+ */
+export function classifyField(desc: FieldDescriptor, customKeys: readonly string[]): FieldPath | 'skip' | null {
   const secondary = `${desc.placeholder} ${desc.name} ${desc.id}`;
-  if (SKIP.test(`${desc.label} ${secondary}`)) return null;
-  if (desc.kind === 'file') return matchFile(`${desc.label} ${secondary}`);
+  if (SKIP.test(`${desc.label} ${secondary}`)) return 'skip';
+  if (desc.kind === 'file') return matchFile(`${desc.label} ${secondary}`) ?? 'skip';
   const labelKey = normKey(desc.label);
   const custom = labelKey ? customKeys.find((key) => normKey(key) === labelKey) : undefined;
   if (custom) return `custom:${custom}`;
   const auto = autocompletePath(desc.autocomplete);
   if (auto) return auto;
   const primary = matchText(cleanLabel(desc.label), desc);
-  if (primary !== undefined) return primary;
-  return matchText(secondary, desc) ?? null;
+  if (primary !== undefined) return primary ?? 'skip';
+  const fallback = matchText(secondary, desc);
+  if (fallback === null) return 'skip';
+  return fallback ?? null;
+}
+
+export function matchField(desc: FieldDescriptor, customKeys: readonly string[]): FieldPath | null {
+  const result = classifyField(desc, customKeys);
+  return result === 'skip' ? null : result;
 }

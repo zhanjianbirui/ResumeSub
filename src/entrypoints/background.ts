@@ -1,15 +1,20 @@
 import { browser } from 'wxt/browser';
 import type { ScriptPublicPath } from 'wxt/utils/inject-script';
+import { createChat } from '@/background/llm/client';
+import { createLlmLog } from '@/background/llm/service';
 import { createRouter } from '@/background/router';
+import { LLM_ORIGIN_PATTERNS, LLM_ORIGINS_KEY } from '@/shared/llm-presets';
 import { createOriginCheck, createSyncQueue, injectIntoTabs, syncAutofillScripts } from '@/background/sites';
 import { fromBrowserArea } from '@/background/storage';
 import { createVault } from '@/background/vault/vault';
 
 export default defineBackground(() => {
-  const vault = createVault({ local: fromBrowserArea(browser.storage.local) });
+  const local = fromBrowserArea(browser.storage.local);
+  const vault = createVault({ local });
+  const llm = { chat: createChat(), log: createLlmLog(local), local };
   const extOrigin = browser.runtime.getURL('/');
   const isOriginAllowed = createOriginCheck(browser.permissions);
-  const handle = createRouter({ vault, extId: browser.runtime.id, extOrigin, isOriginAllowed });
+  const handle = createRouter({ vault, llm, extId: browser.runtime.id, extOrigin, isOriginAllowed });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void handle(message, sender).then(sendResponse, (error: unknown) => {
@@ -30,13 +35,21 @@ export default defineBackground(() => {
       browser.scripting.executeScript({ target: injection.target, files: injection.files as ScriptPublicPath[] }),
   };
   const queue = createSyncQueue();
+  const excluded = async () => {
+    const stored = await local.get(LLM_ORIGINS_KEY);
+    return [...LLM_ORIGIN_PATTERNS, ...(Array.isArray(stored) ? stored.filter((x): x is string => typeof x === 'string') : [])];
+  };
   const sync = () =>
-    queue(() => syncAutofillScripts(scripting, browser.permissions)).catch((e: unknown) =>
+    queue(async () => syncAutofillScripts(scripting, browser.permissions, await excluded())).catch((e: unknown) =>
       console.error('[ResumeSub] sync autofill scripts failed', e));
   browser.runtime.onInstalled.addListener(() => void sync());
   browser.runtime.onStartup.addListener(() => void sync());
   browser.permissions.onAdded.addListener((added) => {
-    void sync().then(() => injectIntoTabs(browser.tabs, scripting, (added.origins ?? []).filter((o) => /^https?:/.test(o))));
+    void sync().then(async () => {
+      const skip = await excluded();
+      const sites = (added.origins ?? []).filter((o) => /^https?:/.test(o) && !skip.includes(o));
+      if (sites.length > 0) await injectIntoTabs(browser.tabs, scripting, sites);
+    });
   });
   browser.permissions.onRemoved.addListener(() => void sync());
 });

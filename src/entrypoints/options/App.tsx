@@ -4,6 +4,7 @@ import { call, errorText } from '@/shared/client';
 import type { AppStatus } from '@/shared/messages';
 import type { OptionsTab } from '@/shared/nav';
 import type { Profile } from '@/shared/schema/profile';
+import { AiSettings } from './AiSettings';
 import { DataPanel } from './DataPanel';
 import { ProfileEditor } from './ProfileEditor';
 import { ResumeImport } from './ResumeImport';
@@ -14,6 +15,7 @@ const TABS: readonly { id: OptionsTab; label: string; hint: string }[] = [
   { id: 'profile', label: '档案', hint: '自动填写使用的个人信息，修改后点底部"保存档案"。' },
   { id: 'import', label: '导入简历', hint: '从 PDF / Word 简历自动提取信息，校对后保存。' },
   { id: 'sites', label: '自动填写网站', hint: '只有授权过的网站才会自动填写。' },
+  { id: 'ai', label: 'AI 模型', hint: '可选：配置后，规则认不出的字段由大模型判断，也可以用 AI 解析简历。不配置也能正常使用。' },
   { id: 'data', label: '数据与隐私', hint: '数据只保存在本机。' },
 ];
 
@@ -109,6 +111,7 @@ function LegacyNotice({ go }: { go: (tab: OptionsTab) => void }) {
 function renderTab(tab: OptionsTab, data: Extract<Data, { kind: 'ready' }>, ctx: TabCtx) {
   const { status, profile } = data;
   if (tab === 'sites') return <SitesForm />;
+  if (tab === 'ai') return <AiSettings />;
   if (tab === 'data') return <DataPanel legacy={status.legacy} onReset={ctx.onReset} />;
   if (status.legacy || !profile) return <LegacyNotice go={ctx.go} />;
   if (tab === 'import') {

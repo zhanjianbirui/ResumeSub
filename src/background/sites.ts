@@ -1,3 +1,4 @@
+import { LLM_ORIGIN_PATTERNS } from '@/shared/llm-presets';
 export const AUTOFILL_SCRIPT_ID = 'resumesub-autofill';
 export const AUTOFILL_SCRIPT_FILE = 'content-scripts/autofill.js';
 
@@ -29,13 +30,19 @@ interface TabsLike {
 
 const SITE_PATTERN = /^https?:\/\//;
 
-export async function grantedSites(permissions: PermissionsLike): Promise<string[]> {
-  return ((await permissions.getAll()).origins ?? []).filter((o) => SITE_PATTERN.test(o));
+/** 已授权的招聘网站；exclude 中的模式（大模型 API 的地址）不算网站，不注入填写脚本。 */
+export async function grantedSites(permissions: PermissionsLike, exclude: readonly string[] = LLM_ORIGIN_PATTERNS): Promise<string[]> {
+  const origins = (await permissions.getAll()).origins ?? [];
+  return origins.filter((o) => SITE_PATTERN.test(o) && !exclude.includes(o));
 }
 
 /** 授权的站点列表以 chrome.permissions 为准；每次权限变化后同步 content script 的注册。 */
-export async function syncAutofillScripts(scripting: ScriptingLike, permissions: PermissionsLike): Promise<void> {
-  const matches = await grantedSites(permissions);
+export async function syncAutofillScripts(
+  scripting: ScriptingLike,
+  permissions: PermissionsLike,
+  exclude: readonly string[] = LLM_ORIGIN_PATTERNS,
+): Promise<void> {
+  const matches = await grantedSites(permissions, exclude);
   const registered = await scripting.getRegisteredContentScripts({ ids: [AUTOFILL_SCRIPT_ID] });
   if (matches.length === 0) {
     if (registered.length > 0) await scripting.unregisterContentScripts({ ids: [AUTOFILL_SCRIPT_ID] });

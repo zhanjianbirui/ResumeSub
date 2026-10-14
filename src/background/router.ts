@@ -1,6 +1,7 @@
 import * as v from 'valibot';
 import { RequestSchema, type RequestType, type Response } from '@/shared/messages';
 import { dispatch, type HandlerDeps } from './handlers';
+import { LlmError } from './llm/client';
 import { VaultError } from './vault/errors';
 
 export interface SenderLike {
@@ -50,6 +51,7 @@ async function contentOriginAllowed(sender: SenderLike, deps: RouterDeps): Promi
 
 function toFailure(error: unknown): Response<never> {
   if (error instanceof VaultError) return fail(error.code, error.message);
+  if (error instanceof LlmError) return fail(`LLM_${error.code}`, error.message);
   console.error('[ResumeSub] unexpected error', error);
   return fail('INTERNAL', '内部错误，请重试');
 }
@@ -65,7 +67,7 @@ export function createRouter(deps: RouterDeps) {
     const req = parsed.output;
     if (kind === 'content' && !CONTENT_ALLOWED.has(req.type)) return forbidden();
     try {
-      return { ok: true, data: await dispatch(req, deps) };
+      return { ok: true, data: await dispatch(req, deps, { origin: kind === 'content' ? senderOrigin(sender) ?? undefined : undefined }) };
     } catch (error) {
       return toFailure(error);
     }

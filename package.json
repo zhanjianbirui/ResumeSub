@@ -13,6 +13,7 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "mammoth": "^1.13.0",
     "pdfjs-dist": "^6.4.299",
     "preact": "^11.0.1",

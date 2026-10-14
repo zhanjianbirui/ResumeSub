@@ -34,6 +34,8 @@ export type EntryGroup = 'education' | 'experience' | 'projects';
 
 export interface FillInstruction {
   signature: string;
+  /** 不是规则直接匹配的：memory 来自本网站的映射记忆，llm 来自大模型推断（页面上标黄，提示用户确认）。 */
+  source?: 'memory' | 'llm';
   value?: string;
   /** combobox 用来匹配选项的候选文字。 */
   candidates?: string[];

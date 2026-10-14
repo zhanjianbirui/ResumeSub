@@ -1,5 +1,7 @@
 const STYLES = {
   filled: '2px solid #2da44e',
+  /** AI 推断填写：黄色，提示用户重点核对。 */
+  review: '2px solid #d4a72c',
   unfilled: '2px dashed #8c959f',
 } as const;
 

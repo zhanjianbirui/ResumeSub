@@ -42,20 +42,24 @@ async function outcomeOf(field: ScannedField, fill: FillInstruction | undefined,
 async function applyAll(fields: readonly ScannedField[], fills: readonly FillInstruction[], ctx: Partial<FillContext>) {
   const bySignature = new Map(fills.map((f) => [f.signature, f]));
   let filled = 0;
+  let review = 0;
   const unfilled: HTMLElement[] = [];
   for (const field of fields) {
     // 前面的填写可能让页面移除了这个控件（切换区块、重新渲染），这时既不填也不标记。
     if (!field.element.isConnected) continue;
-    const outcome = await outcomeOf(field, bySignature.get(field.descriptor.signature), ctx);
+    const fill = bySignature.get(field.descriptor.signature);
+    const outcome = await outcomeOf(field, fill, ctx);
     if (outcome === 'filled') {
       filled += 1;
-      markField(field.element, 'filled');
+      const inferred = fill?.source === 'llm';
+      if (inferred) review += 1;
+      markField(field.element, inferred ? 'review' : 'filled');
     } else if (outcome === 'failed') {
       unfilled.push(field.element);
       markField(field.element, 'unfilled');
     }
   }
-  return { filled, unfilled };
+  return { filled, review, unfilled };
 }
 
 /** 串行执行任务：忙时再次调用只排队一次后续执行。返回值表示本次（含排队的后续）是否发送了新字段。 */
@@ -88,6 +92,7 @@ function withFollowUp(task: () => Promise<boolean>): () => Promise<boolean> {
 export function createAutofillSession(deps: SessionDeps) {
   const handled = new WeakSet<HTMLElement>();
   let filledTotal = 0;
+  let reviewTotal = 0;
   const unfilled = createUnfilledTracker();
   const expander = createExpander();
 
@@ -100,7 +105,7 @@ export function createAutofillSession(deps: SessionDeps) {
     }
   }
 
-  const showResult = () => deps.overlay.show({ kind: 'result', filled: filledTotal, unfilled: unfilled.count() });
+  const showResult = () => deps.overlay.show({ kind: 'result', filled: filledTotal, review: reviewTotal, unfilled: unfilled.count() });
 
   async function runOnce(): Promise<boolean> {
     try {
@@ -114,6 +119,7 @@ export function createAutofillSession(deps: SessionDeps) {
       const result = await applyAll(fresh, plan.fills, deps.fillContext ?? {});
       fresh.forEach((f) => handled.add(f.element));
       filledTotal += result.filled;
+      reviewTotal += result.review;
       unfilled.add(result.unfilled);
       showResult();
       expandSafely(fresh, plan);
