@@ -12,7 +12,7 @@ describe('normalizeText', () => {
 
   it('maps CJK radicals supplement and joins split glyphs', () => {
     expect(normalizeText('美⻝')).toBe('美食');
-    expect(normalizeText('⻩ 栩')).toBe('黄栩');
+    expect(normalizeText('⻩ 梅')).toBe('黄梅');
   });
 
   it('joins only runs of single split glyphs, not spaced words', () => {
@@ -32,8 +32,8 @@ describe('normalizeText', () => {
 
 describe('parseResume with compatibility glyphs', () => {
   it('recognises headings and names after normalisation', () => {
-    const result = parseResume(lines('⻩ 栩', '项⽬经历', ['系统', '2024.01 - 2024.02']));
-    expect(result.profile.basic.name).toBe('黄栩');
+    const result = parseResume(lines('⻩ 梅', '项⽬经历', ['系统', '2024.01 - 2024.02']));
+    expect(result.profile.basic.name).toBe('黄梅');
     expect(result.profile.projects).toHaveLength(1);
   });
 

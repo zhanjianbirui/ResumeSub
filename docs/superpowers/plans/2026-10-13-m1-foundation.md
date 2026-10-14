@@ -74,7 +74,7 @@ tests/
 - [ ] **Step 1: 初始化 git 和 package.json**
 
 ```bash
-cd /Users/huangxu/Downloads/resumesub
+cd resumesub
 git init
 ```
 
