@@ -145,3 +145,9 @@ ul.plain li:last-child { border-bottom: none; }
   .review { grid-template-columns: 1fr; }
   .raw { position: static; max-height: 40vh; }
 }
+
+/* 显式字号：summary / 导航 / 按钮在部分字体回退下会偏小 */
+button, .nav a, .links a { font-size: 14px; }
+details.card > summary { font-size: 15px; }
+.entry-head { font-size: 14px; }
+h3 { font-size: 15px; }
