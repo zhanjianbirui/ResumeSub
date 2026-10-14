@@ -151,3 +151,5 @@ button, .nav a, .links a { font-size: 14px; }
 details.card > summary { font-size: 15px; }
 .entry-head { font-size: 14px; }
 h3 { font-size: 15px; }
+body { font-size: 14px; line-height: 1.55; }
+li { font-size: 14px; line-height: 1.7; }
