@@ -14,16 +14,21 @@ interface Props<T> {
 export function ListSection<T extends Record<string, unknown>>(props: Props<T>) {
   const { title, fields, items, create, onChange, itemLabel } = props;
   return (
-    <section>
-      <h2>{title}</h2>
-      {items.map((item, i) => (
-        <fieldset key={i}>
-          <legend>{itemLabel(item, i) || `${title} ${i + 1}`}</legend>
-          <ObjectForm fields={fields} value={item} onChange={(next) => onChange(updateAt(items, i, next))} />
-          <button type="button" onClick={() => onChange(removeAt(items, i))}>删除</button>
-        </fieldset>
-      ))}
-      <button type="button" onClick={() => onChange([...items, create()])}>+ 添加{title}</button>
-    </section>
+    <details class="card" open>
+      <summary>{title}<span class="badge">{items.length}</span></summary>
+      <div class="body">
+        {items.map((item, i) => (
+          <div class="entry" key={i}>
+            <div class="entry-head">
+              <span>{itemLabel(item, i) || `${title} ${i + 1}`}</span>
+              <span class="spacer" />
+              <button type="button" class="ghost" onClick={() => onChange(removeAt(items, i))}>删除</button>
+            </div>
+            <ObjectForm fields={fields} value={item} onChange={(next) => onChange(updateAt(items, i, next))} />
+          </div>
+        ))}
+        <button type="button" onClick={() => onChange([...items, create()])}>+ 添加{title}</button>
+      </div>
+    </details>
   );
 }

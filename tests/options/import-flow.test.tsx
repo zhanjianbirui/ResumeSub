@@ -24,10 +24,15 @@ function parsedProfile() {
 }
 
 function backend(saved: unknown[]) {
-  mockCall.mockImplementation((async (req: { type: string; profile?: unknown; file?: unknown }) => {
-    if (req.type === 'profile.get') return emptyProfile();
-    if (req.type === 'prefs.get') return { autoLockMinutes: 60 };
-    if (req.type === 'resume.import') { saved.push({ profile: req.profile, file: req.file }); return null; }
+  let current = emptyProfile();
+  mockCall.mockImplementation((async (req: { type: string; profile?: typeof current; file?: unknown }) => {
+    if (req.type === 'app.status') return { legacy: false, hasProfile: false, resumeName: null };
+    if (req.type === 'profile.get') return current;
+    if (req.type === 'resume.import') {
+      saved.push({ profile: req.profile, file: req.file });
+      current = req.profile ?? current;
+      return null;
+    }
     if (req.type === 'profile.save') return null;
     throw new Error(`unexpected ${req.type}`);
   }) as never);
@@ -43,6 +48,7 @@ async function chooseFile() {
 beforeEach(() => {
   mockCall.mockReset();
   mockImport.mockReset();
+  location.hash = '#import';
 });
 afterEach(() => {
   cleanup();
@@ -57,7 +63,7 @@ describe('describeWarning', () => {
 });
 
 describe('import flow', () => {
-  it('parses, reviews and saves profile with the original file', async () => {
+  it('parses, reviews and saves profile with the original file, then shows the profile tab', async () => {
     const saved: unknown[] = [];
     backend(saved);
     mockImport.mockResolvedValue({
@@ -70,23 +76,24 @@ describe('import flow', () => {
     });
     render(<App />);
     await chooseFile();
-    await screen.findByText('确认导入并加密保存');
+    await screen.findByText('确认导入并保存');
     expect(screen.getByText('基本信息：未识别到手机号')).toBeTruthy();
     expect(screen.getByLabelText('简历原文').textContent).toContain('liming@example.com');
     expect((screen.getByLabelText('姓名') as HTMLInputElement).value).toBe('李明');
-    fireEvent.click(screen.getByText('确认导入并加密保存'));
-    await screen.findByLabelText('选择简历文件');
+    fireEvent.click(screen.getByText('确认导入并保存'));
+    await screen.findByText('简历已导入，档案已更新。');
     expect(saved).toEqual([{ profile: parsedProfile(), file: FILE }]);
-    expect((screen.getByLabelText('姓名') as HTMLInputElement).value).toBe('李明');
+    await waitFor(() => expect(location.hash).toBe('#profile'));
+    expect((await screen.findByLabelText('姓名') as HTMLInputElement).value).toBe('李明');
   });
 
-  it('shows import errors and stays on the editor', async () => {
+  it('shows import errors and stays on the import tab', async () => {
     backend([]);
     mockImport.mockRejectedValue(new ImportError('NO_TEXT'));
     render(<App />);
     await chooseFile();
     await screen.findByText(/未识别到文字/);
-    expect(screen.queryByText('确认导入并加密保存')).toBeNull();
+    expect(screen.queryByText('确认导入并保存')).toBeNull();
   });
 
   it('logs unexpected failures and shows a generic message', async () => {
@@ -112,29 +119,15 @@ describe('import flow', () => {
     spy.mockRestore();
   });
 
-  it('keeps a profile saved while the import was running', async () => {
-    backend([]);
-    let finish: (value: Awaited<ReturnType<typeof importResume>>) => void = () => {};
-    mockImport.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
-    render(<App />);
-    await chooseFile();
-    fireEvent.input(screen.getByLabelText('姓名'), { target: { value: '赵六' } });
-    fireEvent.click(screen.getByText('加密保存'));
-    await screen.findByText('已加密保存');
-    finish({ parse: { profile: parsedProfile(), warnings: [], text: '李明' }, file: FILE });
-    fireEvent.click(await screen.findByText('放弃导入'));
-    await screen.findByLabelText('选择简历文件');
-    expect((screen.getByLabelText('姓名') as HTMLInputElement).value).toBe('赵六');
-  });
-
-  it('cancel returns to the editor without saving', async () => {
+  it('cancel returns to the file picker without saving', async () => {
     const saved: unknown[] = [];
     backend(saved);
     mockImport.mockResolvedValue({ parse: { profile: parsedProfile(), warnings: [], text: '李明' }, file: FILE });
     render(<App />);
     await chooseFile();
     fireEvent.click(await screen.findByText('放弃导入'));
-    await waitFor(() => expect(screen.queryByText('确认导入并加密保存')).toBeNull());
+    await screen.findByLabelText('选择简历文件');
+    expect(screen.queryByText('确认导入并保存')).toBeNull();
     expect(saved).toEqual([]);
   });
 });

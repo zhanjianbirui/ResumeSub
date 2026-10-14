@@ -18,8 +18,7 @@ export function CustomFields({ value, onChange }: Props) {
   };
 
   return (
-    <section>
-      <h2>自定义字段</h2>
+    <div>
       <p class="hint">简历里没有、但网申常问的内容，例如“是否接受调剂”。</p>
       {entries.map(([key, text], i) => (
         <div class="row" key={i}>
@@ -27,10 +26,10 @@ export function CustomFields({ value, onChange }: Props) {
             onInput={(e) => commit(updateAt(entries, i, [e.currentTarget.value, text] as const))} />
           <input aria-label={`字段值 ${i + 1}`} value={text}
             onInput={(e) => commit(updateAt(entries, i, [key, e.currentTarget.value] as const))} />
-          <button type="button" onClick={() => commit(removeAt(entries, i))}>删除</button>
+          <button type="button" class="ghost" onClick={() => commit(removeAt(entries, i))}>删除</button>
         </div>
       ))}
       <button type="button" onClick={() => commit([...entries, ['', ''] as const])}>+ 添加字段</button>
-    </section>
+    </div>
   );
 }

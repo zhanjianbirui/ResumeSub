@@ -28,13 +28,13 @@ export function ResumeImport({ onImported }: { onImported: (result: ImportResult
   };
 
   return (
-    <section>
-      <h2>导入简历</h2>
-      <p class="hint">支持 PDF / DOCX。解析全程在本地完成，不会上传；导入会覆盖解析到的字段，请先保存正在编辑的内容。</p>
+    <div class="dropzone">
+      <h3>选择简历文件</h3>
+      <p class="hint">支持 PDF / DOCX（2MB 以内）。解析全程在本机完成，不会上传；解析后可以先校对再保存。</p>
       <input type="file" aria-label="选择简历文件" accept={ACCEPT} disabled={busy}
         onChange={(e) => void handle(e.currentTarget)} />
-      {busy && <p>解析中…</p>}
-      {error && <p class="error" role="alert">{error}</p>}
-    </section>
+      {busy && <p class="hint">解析中…</p>}
+      {error && <p class="notice error" role="alert">{error}</p>}
+    </div>
   );
 }

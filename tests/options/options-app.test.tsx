@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/pr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/entrypoints/options/App';
 import { firstIssue, ProfileEditor } from '@/entrypoints/options/ProfileEditor';
-import { ApiError, call } from '@/shared/client';
+import { call } from '@/shared/client';
 import { emptyEducation, emptyProfile } from '@/shared/schema/profile';
 
 vi.mock('@/shared/client', async (importOriginal) => ({
@@ -31,6 +31,7 @@ let consoleError: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   mockCall.mockReset();
+  location.hash = '';
   consoleError = vi.spyOn(console, 'error');
 });
 afterEach(() => {
@@ -52,65 +53,68 @@ describe('ProfileEditor', () => {
     const onSave = vi.fn();
     const bad = { ...emptyProfile(), education: [{ ...emptyEducation(), start: '2025.09' }] };
     render(<ProfileEditor initial={bad} onSave={onSave} />);
-    fireEvent.click(screen.getByText('加密保存'));
+    fireEvent.click(screen.getByText('保存档案'));
     await screen.findByText(/education\.0\.start/);
     expect(onSave).not.toHaveBeenCalled();
   });
 });
 
-describe('options App', () => {
-  it('explains how to unlock when the vault is locked', async () => {
-    backend({ 'profile.get': () => { throw new ApiError('LOCKED', '数据已上锁，请先解锁'); } });
-    render(<App />);
-    await screen.findByText(/档案已上锁/);
-  });
+const READY = { legacy: false, hasProfile: true, resumeName: 'cv.pdf' };
 
-  it('explains how to start when the vault is not initialized', async () => {
-    backend({ 'profile.get': () => { throw new ApiError('NOT_INITIALIZED', '尚未设置主密码'); } });
+describe('options App', () => {
+  it('shows the legacy notice and resets after a two-step confirmation', async () => {
+    let legacy = true;
+    backend({
+      'app.status': () => ({ legacy, hasProfile: false, resumeName: null }),
+      'profile.get': () => emptyProfile(),
+      'vault.reset': () => { legacy = false; return null; },
+    });
     render(<App />);
-    await screen.findByText(/尚未创建档案/);
+    await screen.findByText(/检测到旧版/);
+    fireEvent.click(screen.getByText('数据与隐私'));
+    fireEvent.click(await screen.findByText('清空所有数据', { selector: 'button' }));
+    expect(mockCall).not.toHaveBeenCalledWith({ type: 'vault.reset' });
+    fireEvent.click(screen.getByText('确认清空'));
+    await screen.findByText('数据已清空。');
+    expect(mockCall).toHaveBeenCalledWith({ type: 'vault.reset' });
+    expect(location.hash).toBe('#data');
   });
 
   it('loads, edits and saves the profile', async () => {
     const saved: unknown[] = [];
     backend({
+      'app.status': () => READY,
       'profile.get': () => emptyProfile(),
       'profile.save': (req) => { saved.push(req.profile); return null; },
-      'prefs.get': () => ({ autoLockMinutes: 60 }),
     });
     render(<App />);
     const name = await screen.findByLabelText('姓名');
     fireEvent.input(name, { target: { value: '赵六' } });
-    fireEvent.click(screen.getByText('加密保存'));
-    await screen.findByText('已加密保存');
+    fireEvent.click(screen.getByText('保存档案'));
+    await screen.findByText('已保存');
     expect(saved).toEqual([{ ...emptyProfile(), basic: { ...emptyProfile().basic, name: '赵六' } }]);
   });
 
   it('clears the saved notice when the user edits', async () => {
-    backend({
-      'profile.get': () => emptyProfile(),
-      'profile.save': () => null,
-      'prefs.get': () => ({ autoLockMinutes: 60 }),
-    });
+    backend({ 'app.status': () => READY, 'profile.get': () => emptyProfile(), 'profile.save': () => null });
     render(<App />);
     const name = await screen.findByLabelText('姓名');
-    fireEvent.click(screen.getByText('加密保存'));
-    await screen.findByText('已加密保存');
+    fireEvent.click(screen.getByText('保存档案'));
+    await screen.findByText('已保存');
     fireEvent.input(name, { target: { value: '钱七' } });
-    await waitFor(() => expect(screen.queryByText('已加密保存')).toBeNull());
+    await waitFor(() => expect(screen.queryByText('已保存')).toBeNull());
   });
 
-  it('saves auto-lock preference', async () => {
-    backend({
-      'profile.get': () => emptyProfile(),
-      'prefs.get': () => ({ autoLockMinutes: 60 }),
-      'prefs.save': () => null,
-    });
+  it('navigates between tabs via the side nav and the URL hash', async () => {
+    backend({ 'app.status': () => READY, 'profile.get': () => emptyProfile() });
+    location.hash = '#import';
     render(<App />);
-    const select = await screen.findByLabelText('自动上锁');
-    fireEvent.change(select, { target: { value: '15' } });
-    await waitFor(() =>
-      expect(mockCall).toHaveBeenCalledWith({ type: 'prefs.save', prefs: { autoLockMinutes: 15 } }),
-    );
+    await screen.findByLabelText('选择简历文件');
+    expect(screen.getByText(/当前简历文件：cv\.pdf/)).toBeTruthy();
+    fireEvent.click(screen.getByText('自动填写网站'));
+    await screen.findByText('一键授权常见招聘网站');
+    expect(location.hash).toBe('#sites');
+    fireEvent.click(screen.getByText('档案'));
+    await screen.findByLabelText('姓名');
   });
 });

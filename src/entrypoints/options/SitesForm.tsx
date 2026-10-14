@@ -40,24 +40,31 @@ export function SitesForm() {
   };
 
   return (
-    <section>
-      <h2>自动填写站点</h2>
-      <p class="hint">只有授权过的网站才会自动填写。常见招聘系统：{PRESET_NAMES}。</p>
-      <button
-        type="button" class="primary" disabled={pending}
-        onClick={() => run(() => enableSites(PRESET_SITES.map((s) => s.pattern)), GRANT_FAILURE)}
-      >
-        一键授权常见招聘网站
-      </button>
-      <ul>
-        {sites.map((site) => (
-          <li key={site} class="row">
-            <span>{site}</span>
-            <button type="button" disabled={pending} onClick={() => run(() => disableSites([site]), REMOVE_FAILURE)}>移除</button>
-          </li>
-        ))}
-      </ul>
-      {error && <p class="error" role="alert">{error}</p>}
-    </section>
+    <div>
+      <div class="card">
+        <h3>常见招聘网站</h3>
+        <p class="hint">{PRESET_NAMES}</p>
+        <button
+          type="button" class="primary" disabled={pending}
+          onClick={() => run(() => enableSites(PRESET_SITES.map((s) => s.pattern)), GRANT_FAILURE)}
+        >
+          一键授权常见招聘网站
+        </button>
+      </div>
+      <div class="card">
+        <h3>已授权的网站</h3>
+        {sites.length === 0 && <p class="hint">还没有授权任何网站。也可以在网申页面点击工具栏图标单独启用。</p>}
+        <ul class="plain">
+          {sites.map((site) => (
+            <li key={site}>
+              <span>{site}</span>
+              <span class="spacer" />
+              <button type="button" class="ghost" disabled={pending} onClick={() => run(() => disableSites([site]), REMOVE_FAILURE)}>移除</button>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {error && <p class="notice error" role="alert">{error}</p>}
+    </div>
   );
 }

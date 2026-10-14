@@ -1,101 +1,65 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/preact';
+import { cleanup, fireEvent, render, screen } from '@testing-library/preact';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '@/entrypoints/popup/App';
-import { validateNewPassword } from '@/entrypoints/popup/SetupForm';
 import { ApiError, call } from '@/shared/client';
+import { openOptions } from '@/shared/nav';
 
 vi.mock('@/shared/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/client')>()),
   call: vi.fn(),
 }));
-
+vi.mock('@/shared/nav', () => ({ openOptions: vi.fn() }));
 vi.mock('@/shared/site-access', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/shared/site-access')>()),
   currentTabOrigin: vi.fn(async () => null),
-  listEnabledSites: vi.fn(async () => []),
 }));
 
 const mockCall = vi.mocked(call);
-const PW = 'correct-horse-1';
+const mockOpen = vi.mocked(openOptions);
 
-function backend(initial: 'uninitialized' | 'locked' | 'unlocked') {
-  let status = initial;
-  mockCall.mockImplementation((async (req: { type: string; password?: string }) => {
-    if (req.type === 'vault.status') return { status };
-    if (req.type === 'vault.setup' || req.type === 'vault.unlock') {
-      if (req.password !== PW) throw new ApiError('WRONG_PASSWORD', '主密码错误');
-      status = 'unlocked';
-      return null;
-    }
-    if (req.type === 'vault.lock') { status = 'locked'; return null; }
-    throw new Error(`unexpected ${req.type}`);
-  }) as never);
+function status(data: unknown) {
+  mockCall.mockImplementation((async () => data) as never);
 }
-
-function typeInto(label: string, value: string) {
-  fireEvent.input(screen.getByLabelText(label), { target: { value } });
-}
-
-let consoleError: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   mockCall.mockReset();
-  consoleError = vi.spyOn(console, 'error');
+  mockOpen.mockReset();
 });
 afterEach(() => {
   cleanup();
-  expect(consoleError).not.toHaveBeenCalled();
-  consoleError.mockRestore();
-});
-
-describe('validateNewPassword', () => {
-  it('checks length and confirmation', () => {
-    expect(validateNewPassword('short', 'short')).toContain('至少');
-    expect(validateNewPassword(PW, 'different-pw')).toBe('两次输入的密码不一致');
-    expect(validateNewPassword(PW, PW)).toBeNull();
-  });
 });
 
 describe('popup', () => {
-  it('creates a vault on first run', async () => {
-    backend('uninitialized');
+  it('guides first-time users to import a résumé (no password needed)', async () => {
+    status({ legacy: false, hasProfile: false, resumeName: null });
     render(<App />);
-    await screen.findByText('创建加密档案');
-    typeInto('主密码', PW);
-    typeInto('确认主密码', PW);
-    fireEvent.click(screen.getByText('创建加密档案'));
-    await screen.findByText('✅ 已解锁');
-    expect(mockCall).toHaveBeenCalledWith({ type: 'vault.setup', password: PW });
+    fireEvent.click(await screen.findByText('导入简历开始使用'));
+    expect(mockOpen).toHaveBeenCalledWith('import');
+    expect(screen.queryByText(/密码/)).toBeNull();
   });
 
-  it('does not call setup when confirmation mismatches', async () => {
-    backend('uninitialized');
+  it('shows a ready profile with the résumé name and quick links', async () => {
+    status({ legacy: false, hasProfile: true, resumeName: 'cv.pdf' });
     render(<App />);
-    await screen.findByText('创建加密档案');
-    typeInto('主密码', PW);
-    typeInto('确认主密码', 'something-else');
-    fireEvent.click(screen.getByText('创建加密档案'));
-    await screen.findByText('两次输入的密码不一致');
-    expect(mockCall).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'vault.setup' }));
+    await screen.findByText('档案已就绪');
+    expect(screen.getByText('cv.pdf')).toBeTruthy();
+    fireEvent.click(screen.getByText('网站管理'));
+    expect(mockOpen).toHaveBeenCalledWith('sites');
+    fireEvent.click(screen.getByText('编辑档案'));
+    expect(mockOpen).toHaveBeenCalledWith('profile');
   });
 
-  it('shows backend error on wrong password and unlocks on correct one', async () => {
-    backend('locked');
+  it('sends legacy users to the data page', async () => {
+    status({ legacy: true, hasProfile: false, resumeName: null });
     render(<App />);
-    await screen.findByText('解锁');
-    typeInto('主密码', 'nope-nope-nope');
-    fireEvent.click(screen.getByText('解锁'));
-    await screen.findByText('主密码错误');
-    typeInto('主密码', PW);
-    fireEvent.click(screen.getByText('解锁'));
-    await screen.findByText('✅ 已解锁');
+    fireEvent.click(await screen.findByText('前往处理'));
+    expect(mockOpen).toHaveBeenCalledWith('data');
   });
 
-  it('locks on demand', async () => {
-    backend('unlocked');
+  it('shows backend errors', async () => {
+    mockCall.mockImplementation((async () => { throw new ApiError('CORRUPTED', '档案数据已损坏'); }) as never);
     render(<App />);
-    fireEvent.click(await screen.findByText('立即上锁'));
-    await waitFor(() => expect(screen.getByText('解锁')).toBeTruthy());
+    await screen.findByText('档案数据已损坏');
   });
 });

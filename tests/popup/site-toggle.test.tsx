@@ -44,7 +44,7 @@ describe('SiteToggle', () => {
     site(true);
     m.disableSites.mockResolvedValue(true);
     render(<SiteToggle />);
-    expect(await screen.findByText(/已启用自动填写/)).toBeTruthy();
+    expect(await screen.findByText(/会自动填写，填好后/)).toBeTruthy();
     expect(screen.queryByText(/刷新/)).toBeNull();
     fireEvent.click(screen.getByText('在此网站停用'));
     await screen.findByText('在此网站启用自动填写');
@@ -53,21 +53,21 @@ describe('SiteToggle', () => {
   it('explains preset coverage and offers no per-site disable (F4)', async () => {
     site(true, ['https://*.example.com/*']);
     render(<SiteToggle />);
-    await screen.findByText(/已通过常见网站授权启用，可在设置中管理/);
+    await screen.findByText(/批量授权启用/);
     expect(screen.queryByText('在此网站停用')).toBeNull();
   });
 
   it('explains unsupported pages', async () => {
     m.currentTabOrigin.mockResolvedValue(null);
     render(<SiteToggle />);
-    await screen.findByText('当前页面不支持自动填写');
+    await screen.findByText('当前页面不是网页，无法自动填写');
   });
 
   it('falls back to unsupported when reading the site state fails (F5)', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
     m.currentTabOrigin.mockRejectedValue(new Error('no tabs'));
     render(<SiteToggle />);
-    await screen.findByText('当前页面不支持自动填写');
+    await screen.findByText('当前页面不是网页，无法自动填写');
     expect(error).toHaveBeenCalled();
     error.mockRestore();
   });

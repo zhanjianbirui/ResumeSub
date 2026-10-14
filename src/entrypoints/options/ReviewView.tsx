@@ -40,18 +40,21 @@ export function ReviewView({ current, imported, onDone, onCancel }: Props) {
 
   return (
     <div>
-      <h2>校对解析结果</h2>
-      <p class="hint">左侧为简历原文，右侧为解析结果（已与现有档案合并）。核对无误后保存。</p>
+      <div class="row">
+        <h3>校对解析结果</h3>
+        <span class="spacer" />
+        <button type="button" class="ghost" onClick={onCancel}>放弃导入</button>
+      </div>
+      <p class="hint">左侧为简历原文，右侧为解析结果（已与现有档案合并）。核对无误后点底部按钮保存。</p>
       {warnings.length > 0 && (
-        <ul class="warn">
+        <ul class="notice warn">
           {warnings.map((w, i) => <li key={i}>{describeWarning(w)}</li>)}
         </ul>
       )}
       <div class="review">
         <pre class="raw" aria-label="简历原文">{text}</pre>
-        <ProfileEditor initial={merged} onSave={save} saveLabel="确认导入并加密保存" />
+        <ProfileEditor initial={merged} onSave={save} saveLabel="确认导入并保存" />
       </div>
-      <button type="button" onClick={onCancel}>放弃导入</button>
     </div>
   );
 }

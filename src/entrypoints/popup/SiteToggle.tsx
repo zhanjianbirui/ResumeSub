@@ -18,9 +18,9 @@ async function readState(): Promise<State> {
 }
 
 const HINTS: Readonly<Record<Mode, string>> = {
-  off: '',
-  site: '：已启用自动填写',
-  preset: '：已通过常见网站授权启用，可在设置中管理',
+  off: '启用后，打开本站的网申页面会自动填写（不会自动提交）。',
+  site: '打开本站网申页面时会自动填写，填好后请检查再提交。',
+  preset: '已通过“常见招聘网站”批量授权启用，可在网站管理中修改。',
 };
 
 export function SiteToggle() {
@@ -36,7 +36,9 @@ export function SiteToggle() {
   }, []);
 
   if (state.kind === 'loading') return null;
-  if (state.kind === 'unsupported') return <p class="hint">当前页面不支持自动填写</p>;
+  if (state.kind === 'unsupported') {
+    return <div class="card"><p class="hint">当前页面不是网页，无法自动填写</p></div>;
+  }
 
   // permissions.request 必须在点击事件中同步发起，否则浏览器会认为不是用户操作而拒绝
   const toggle = () => {
@@ -58,14 +60,19 @@ export function SiteToggle() {
   };
 
   return (
-    <section>
-      <p class="hint">{state.origin}{HINTS[state.mode]}</p>
+    <div class="card">
+      <div class="row">
+        <span class="site">{new URL(state.origin).host}</span>
+        <span class="spacer" />
+        <span class={state.mode === 'off' ? 'badge' : 'badge on'}>{state.mode === 'off' ? '未启用' : '已启用'}</span>
+      </div>
+      <p class="hint">{HINTS[state.mode]}</p>
       {state.mode !== 'preset' && (
-        <button type="button" class={state.mode === 'off' ? 'primary' : ''} disabled={pending} onClick={toggle}>
+        <button type="button" class={state.mode === 'off' ? 'primary block' : 'block'} disabled={pending} onClick={toggle}>
           {state.mode === 'off' ? '在此网站启用自动填写' : '在此网站停用'}
         </button>
       )}
       {error && <p class="error" role="alert">{error}</p>}
-    </section>
+    </div>
   );
 }
