@@ -44,13 +44,13 @@ describe('autofill session', () => {
     expect(requestPlan).toHaveBeenCalledTimes(2);
   });
 
-  it('shows the locked message and retries the same fields later', async () => {
+  it('shows the no-profile message and fills the same fields once a profile exists', async () => {
     document.body.innerHTML = '<label>姓名<input name="n"></label>';
-    let locked = true;
-    const { session, overlay } = setup((fields) => (locked ? { status: 'locked' } : fillByLabel({ 姓名: '李明' })(fields)));
+    let empty = true;
+    const { session, overlay } = setup((fields) => (empty ? { status: 'empty' } : fillByLabel({ 姓名: '李明' })(fields)));
     await session.run();
-    expect(overlay.text()).toContain('已上锁');
-    locked = false;
+    expect(overlay.text()).toContain('还没有档案');
+    empty = false;
     await session.run();
     expect((document.querySelector('[name="n"]') as HTMLInputElement).value).toBe('李明');
   });
@@ -118,7 +118,7 @@ describe('session hardening (D1-D4)', () => {
       calls += 1;
       if (calls === 1) {
         await gate;
-        return { status: 'locked' };
+        return { status: 'empty' };
       }
       return fillByLabel({ 姓名: '李明' })(fields);
     });

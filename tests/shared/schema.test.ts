@@ -2,7 +2,6 @@ import * as v from 'valibot';
 import { describe, expect, it } from 'vitest';
 import { emptyEducation, emptyProfile, ProfileSchema } from '@/shared/schema/profile';
 import { emptyVaultData, VaultDataSchema } from '@/shared/schema/vault-data';
-import { DEFAULT_PREFS, PrefsSchema } from '@/shared/schema/prefs';
 
 describe('ProfileSchema', () => {
   it('accepts an empty profile', () => {
@@ -48,9 +47,3 @@ describe('VaultDataSchema', () => {
   });
 });
 
-describe('PrefsSchema', () => {
-  it('accepts defaults and rejects unsupported minutes', () => {
-    expect(v.safeParse(PrefsSchema, DEFAULT_PREFS).success).toBe(true);
-    expect(v.safeParse(PrefsSchema, { autoLockMinutes: 7 }).success).toBe(false);
-  });
-});

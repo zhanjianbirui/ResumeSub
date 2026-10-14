@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createPrefs } from '@/background/prefs';
 import { classifySender, createRouter } from '@/background/router';
 import { createVault, type Vault } from '@/background/vault/vault';
-import { MAX_RESUME_BASE64 } from '@/shared/constants';
+import { MAX_RESUME_BASE64, STORAGE_KEYS } from '@/shared/constants';
 import { emptyProfile } from '@/shared/schema/profile';
 import { memoryArea } from '../helpers/memory-area';
 
@@ -11,33 +10,27 @@ const ORIGIN = 'chrome-extension://ext-id/';
 const page = { id: EXT_ID, url: `${ORIGIN}popup.html` };
 const optionsTab = { id: EXT_ID, url: `${ORIGIN}options.html`, tab: { id: 3 } };
 const content = { id: EXT_ID, url: 'https://jobs.example.com/apply', tab: { id: 1 } };
-const PW = 'correct-horse-1';
 
 function makeRouter(vaultOverride?: Vault, allowed: boolean | ((url: string) => Promise<boolean>) = true) {
   const local = memoryArea();
-  const session = memoryArea();
-  const vault = vaultOverride ?? createVault({ local, session, now: () => 0, iterations: 1000 });
-  const events: string[] = [];
-  const autoLock = {
-    touch: async () => { events.push('touch'); },
-    cancel: async () => { events.push('cancel'); },
-  };
-  const pending = {
-    added: [] as number[],
-    flushed: 0,
-    flushWith: (): Promise<void> => Promise.resolve(),
-    async add(tabId: number) { this.added.push(tabId); },
-    flush() {
-      this.flushed += 1;
-      return this.flushWith();
-    },
-  };
+  const vault = vaultOverride ?? createVault({ local });
   const handle = createRouter({
-    vault, prefs: createPrefs(local), autoLock, pending, extId: EXT_ID, extOrigin: ORIGIN,
+    vault, extId: EXT_ID, extOrigin: ORIGIN,
     isOriginAllowed: typeof allowed === 'function' ? allowed : async () => allowed,
   });
-  return { handle, events, vault, pending };
+  return { handle, vault, local };
 }
+
+const named = (name: string) => {
+  const base = emptyProfile();
+  return { ...base, basic: { ...base.basic, name } };
+};
+
+const planReq = {
+  type: 'autofill.plan',
+  url: 'https://jobs.example.com/apply',
+  fields: [{ signature: 'a', kind: 'text', label: '姓名', name: '', id: '', placeholder: '', autocomplete: '', section: '', repeatIndex: 0 }],
+};
 
 describe('classifySender', () => {
   it('classifies extension pages, content scripts and strangers', () => {
@@ -50,30 +43,33 @@ describe('classifySender', () => {
 });
 
 describe('router', () => {
-  const planReq = {
-    type: 'autofill.plan',
-    url: 'https://jobs.example.com/apply',
-    fields: [{ signature: 'a', kind: 'text', label: '姓名', name: '', id: '', placeholder: '', autocomplete: '', section: '', repeatIndex: 0 }],
-  };
-
-  it('lets content scripts on allowed origins request a plan', async () => {
+  it('reports app status without any password setup', async () => {
     const { handle } = makeRouter();
-    await handle({ type: 'vault.setup', password: PW }, page);
-    const base = emptyProfile();
-    await handle({ type: 'profile.save', profile: { ...base, basic: { ...base.basic, name: '测试用户' } } }, page);
+    expect(await handle({ type: 'app.status' }, page)).toEqual({
+      ok: true, data: { legacy: false, hasProfile: false, resumeName: null },
+    });
+    await handle({ type: 'profile.save', profile: named('测试用户') }, page);
+    expect(await handle({ type: 'app.status' }, page)).toMatchObject({ ok: true, data: { hasProfile: true } });
+  });
+
+  it('returns empty plans until a profile exists, then fills', async () => {
+    const { handle } = makeRouter();
+    expect(await handle(planReq, content)).toEqual({ ok: true, data: { status: 'empty' } });
+    await handle({ type: 'profile.save', profile: named('测试用户') }, page);
     expect(await handle(planReq, content)).toEqual({
-      ok: true, data: { status: 'ready', fills: [{ signature: 'a', value: '测试用户' }], counts: { education: 0, experience: 0, projects: 0 } },
+      ok: true,
+      data: { status: 'ready', fills: [{ signature: 'a', value: '测试用户' }], counts: { education: 0, experience: 0, projects: 0 } },
     });
   });
 
-  it('returns locked and remembers the tab, then flushes on unlock', async () => {
-    const { handle, pending } = makeRouter();
-    await handle({ type: 'vault.setup', password: PW }, page);
-    await handle({ type: 'vault.lock' }, page);
-    expect(await handle(planReq, content)).toEqual({ ok: true, data: { status: 'locked' } });
-    expect(pending.added).toEqual([1]);
-    await handle({ type: 'vault.unlock', password: PW }, page);
-    expect(pending.flushed).toBe(1);
+  it('flags legacy password vaults and lets extension pages reset them', async () => {
+    const { handle, local } = makeRouter();
+    await local.set(STORAGE_KEYS.vault, { v: 1, salt: 's', iterations: 1, check: { iv: '', ct: '' }, data: { iv: '', ct: '' } });
+    expect(await handle({ type: 'app.status' }, page)).toMatchObject({ ok: true, data: { legacy: true } });
+    expect(await handle(planReq, content)).toEqual({ ok: true, data: { status: 'empty' } });
+    expect(await handle({ type: 'profile.get' }, page)).toMatchObject({ ok: false, error: { code: 'LEGACY' } });
+    expect(await handle({ type: 'vault.reset' }, page)).toEqual({ ok: true, data: null });
+    expect(await handle({ type: 'app.status' }, page)).toMatchObject({ ok: true, data: { legacy: false } });
   });
 
   it('forbids plan requests from origins the user has not authorised', async () => {
@@ -81,29 +77,7 @@ describe('router', () => {
     expect(await handle(planReq, content)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
   });
 
-  it('does not block unlock on flushing pending tabs and logs flush failures (E1)', async () => {
-    const { handle, pending } = makeRouter();
-    await handle({ type: 'vault.setup', password: PW }, page);
-    await handle({ type: 'vault.lock' }, page);
-    pending.flushWith = () => new Promise<void>(() => {});
-    expect(await handle({ type: 'vault.unlock', password: PW }, page)).toEqual({ ok: true, data: null });
-    await handle({ type: 'vault.lock' }, page);
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    pending.flushWith = () => Promise.reject(new Error('storage gone'));
-    expect(await handle({ type: 'vault.unlock', password: PW }, page)).toEqual({ ok: true, data: null });
-    await vi.waitFor(() => expect(error).toHaveBeenCalled());
-    error.mockRestore();
-  });
-
-  it('does not extend the auto-lock timer on plan requests (E2)', async () => {
-    const { handle, events } = makeRouter();
-    await handle({ type: 'vault.setup', password: PW }, page);
-    events.length = 0;
-    expect(await handle(planReq, content)).toMatchObject({ ok: true });
-    expect(events).not.toContain('touch');
-  });
-
-  it('checks the content origin from sender.origin before parsing (E4)', async () => {
+  it('checks the content origin from sender.origin before parsing', async () => {
     const seen: string[] = [];
     const { handle } = makeRouter(undefined, async (url) => {
       seen.push(url);
@@ -115,59 +89,31 @@ describe('router', () => {
     expect(await handle({ type: 'nope' }, content)).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
   });
 
-  it('forbids content senders without origin or url (E4)', async () => {
+  it('forbids content senders without origin or url', async () => {
     const { handle } = makeRouter();
     expect(await handle(planReq, { id: EXT_ID, tab: { id: 1 } })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
     expect(await handle(planReq, { id: EXT_ID, url: 'not a url', tab: { id: 1 } })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
   });
 
-  it('rejects malformed requests', async () => {
+  it('rejects malformed requests and unknown senders', async () => {
     const { handle } = makeRouter();
     expect(await handle({ type: 'nope' }, page)).toMatchObject({ ok: false, error: { code: 'BAD_REQUEST' } });
-  });
-
-  it('rejects unknown senders with FORBIDDEN before parsing', async () => {
-    const { handle } = makeRouter();
     expect(await handle({ type: 'nope' }, { id: 'evil' })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
   });
 
-  it('forbids content scripts and unknown senders from extension-only APIs', async () => {
+  it('forbids content scripts from extension-only APIs (profile, reset, import)', async () => {
     const { handle } = makeRouter();
-    expect(await handle({ type: 'profile.get' }, content)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
-    expect(await handle({ type: 'vault.status' }, { id: 'evil' })).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
-  });
-
-  it('runs the full setup → save → lock → unlock flow', async () => {
-    const { handle, events } = makeRouter();
-    expect(await handle({ type: 'vault.status' }, page)).toEqual({ ok: true, data: { status: 'uninitialized' } });
-    expect(await handle({ type: 'vault.setup', password: PW }, page)).toEqual({ ok: true, data: null });
-
-    const base = emptyProfile();
-    const profile = { ...base, basic: { ...base.basic, name: '测试用户' } };
-    expect(await handle({ type: 'profile.save', profile }, page)).toEqual({ ok: true, data: null });
-
-    expect(await handle({ type: 'vault.lock' }, page)).toEqual({ ok: true, data: null });
-    expect(await handle({ type: 'profile.get' }, page)).toMatchObject({ ok: false, error: { code: 'LOCKED' } });
-
-    await handle({ type: 'vault.unlock', password: PW }, page);
-    expect(await handle({ type: 'profile.get' }, page)).toMatchObject({ ok: true, data: { basic: { name: '测试用户' } } });
-    expect(events).toContain('touch');
-    expect(events).toContain('cancel');
-  });
-
-  it('saves and reads prefs', async () => {
-    const { handle } = makeRouter();
-    await handle({ type: 'prefs.save', prefs: { autoLockMinutes: 15 } }, page);
-    expect(await handle({ type: 'prefs.get' }, page)).toEqual({ ok: true, data: { autoLockMinutes: 15 } });
+    for (const req of [{ type: 'profile.get' }, { type: 'vault.reset' }, { type: 'app.status' }]) {
+      expect(await handle(req, content)).toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
+    }
   });
 
   it('hides unexpected errors behind INTERNAL', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const broken = { status: async () => { throw new Error('boom'); } } as unknown as Vault;
+    const broken = { state: async () => { throw new Error('boom'); } } as unknown as Vault;
     const { handle } = makeRouter(broken);
-    expect(await handle({ type: 'vault.status' }, page)).toEqual({
-      ok: false,
-      error: { code: 'INTERNAL', message: '内部错误，请重试' },
+    expect(await handle({ type: 'app.status' }, page)).toEqual({
+      ok: false, error: { code: 'INTERNAL', message: '内部错误，请重试' },
     });
     expect(spy).toHaveBeenCalled();
     spy.mockRestore();
@@ -175,15 +121,12 @@ describe('router', () => {
 
   it('imports profile and resume file atomically', async () => {
     const { handle, vault } = makeRouter();
-    await handle({ type: 'vault.setup', password: PW }, page);
-    const base = emptyProfile();
-    const profile = { ...base, basic: { ...base.basic, name: '导入用户' } };
     const file = { name: 'cv.pdf', mime: 'application/pdf', dataBase64: 'JVBERi0=' };
-    expect(await handle({ type: 'resume.import', profile, file }, page)).toEqual({ ok: true, data: null });
-    expect(await handle({ type: 'profile.get' }, page)).toMatchObject({ ok: true, data: { basic: { name: '导入用户' } } });
+    expect(await handle({ type: 'resume.import', profile: named('导入用户'), file }, page)).toEqual({ ok: true, data: null });
     const stored = await vault.read();
     expect(stored.resumeFile).toEqual(file);
     expect(stored.profile.basic.name).toBe('导入用户');
+    expect(await handle({ type: 'app.status' }, page)).toMatchObject({ ok: true, data: { resumeName: 'cv.pdf' } });
   });
 
   it('rejects resume files with unsupported mime or oversize payload', async () => {

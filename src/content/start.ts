@@ -20,14 +20,11 @@ export function isCrossOriginFrame(frame: FrameInfo): boolean {
 export interface StartDeps {
   doc: Document;
   session: { run(): Promise<boolean> };
-  /** 注册 autofill.retry 消息监听。 */
-  onRetry(listener: () => void): void;
   getUrl(): string;
 }
 
-/** 先注册重试监听，再等待页面稳定后首轮填写，之后在新增控件时按预算重扫。返回停止函数。 */
+/** 等待页面稳定后首轮填写，之后在新增控件时按预算重扫。返回停止函数。 */
 export async function startAutofill(deps: StartDeps): Promise<() => void> {
-  deps.onRetry(() => void deps.session.run());
   const root = deps.doc.body ?? deps.doc.documentElement;
   const observer = new MutationObserver((records) => {
     if (addsFormControls(records)) scheduler.notify();
@@ -38,7 +35,7 @@ export async function startAutofill(deps: StartDeps): Promise<() => void> {
     maxWaitMs: RERUN_MAX_WAIT_MS,
     maxRuns: MAX_RUNS,
     getUrl: deps.getUrl,
-    // 预算用完后不再需要监听 DOM 变动（SPA 换页后不重新挂载，手动重试仍可用）。
+    // 预算用完后不再需要监听 DOM 变动。
     onExhausted: () => observer.disconnect(),
   });
   await waitForStable(root);

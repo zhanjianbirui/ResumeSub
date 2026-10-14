@@ -107,8 +107,8 @@ export function createAutofillSession(deps: SessionDeps) {
       const fresh = scanFields(deps.doc).filter((f) => !handled.has(f.element));
       if (fresh.length === 0) return false;
       const plan = await deps.requestPlan(fresh.map((f) => f.descriptor));
-      if (plan.status === 'locked') {
-        deps.overlay.show({ kind: 'locked' });
+      if (plan.status === 'empty') {
+        deps.overlay.show({ kind: 'empty' });
         return true;
       }
       const result = await applyAll(fresh, plan.fills, deps.fillContext ?? {});

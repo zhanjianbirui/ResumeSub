@@ -64,7 +64,7 @@ describe('rescans after the first run changes the page (B3)', () => {
         return true;
       }),
     };
-    const started = startAutofill({ doc: document, session, onRetry: () => {}, getUrl: () => 'https://a.example/' });
+    const started = startAutofill({ doc: document, session, getUrl: () => 'https://a.example/' });
     await vi.advanceTimersByTimeAsync(600);
     const stop = await started;
     await vi.advanceTimersByTimeAsync(1000);

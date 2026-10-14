@@ -65,7 +65,7 @@ export function createRouter(deps: RouterDeps) {
     const req = parsed.output;
     if (kind === 'content' && !CONTENT_ALLOWED.has(req.type)) return forbidden();
     try {
-      return { ok: true, data: await dispatch(req, deps, { tabId: sender.tab?.id }) };
+      return { ok: true, data: await dispatch(req, deps) };
     } catch (error) {
       return toFailure(error);
     }

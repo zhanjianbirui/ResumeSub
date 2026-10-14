@@ -9,12 +9,6 @@ const LOADED_FLAG = '__resumesubAutofillLoaded';
 
 const plan = (fields: FieldDescriptor[]) => requestPlan((m) => browser.runtime.sendMessage(m), location, fields);
 
-const onRetry = (listener: () => void) => {
-  browser.runtime.onMessage.addListener((message: unknown) => {
-    if ((message as { type?: string } | null)?.type === 'autofill.retry') listener();
-  });
-};
-
 export default defineContentScript({
   registration: 'runtime',
   async main() {
@@ -26,6 +20,6 @@ export default defineContentScript({
     let session: ReturnType<typeof createAutofillSession> | undefined;
     const overlay = createOverlay(document, () => session?.nextUnfilled());
     session = createAutofillSession({ doc: document, requestPlan: plan, overlay });
-    await startAutofill({ doc: document, session, onRetry, getUrl: () => location.href });
+    await startAutofill({ doc: document, session, getUrl: () => location.href });
   },
 });

@@ -13,24 +13,10 @@ afterEach(() => {
 
 function deps(doc: Document = document) {
   const session = { run: vi.fn(async () => true), nextUnfilled: vi.fn() };
-  let retry: (() => void) | undefined;
-  const onRetry = vi.fn((listener: () => void) => { retry = listener; });
-  return { doc, session, onRetry, getUrl: () => 'https://a.example/', fire: () => retry?.() };
+  return { doc, session, getUrl: () => 'https://a.example/' };
 }
 
 describe('startAutofill', () => {
-  it('registers the retry listener before the page settles (D3)', async () => {
-    const d = deps();
-    const started = startAutofill(d);
-    expect(d.onRetry).toHaveBeenCalledTimes(1);
-    d.fire();
-    expect(d.session.run).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(600);
-    const stop = await started;
-    expect(d.session.run).toHaveBeenCalledTimes(2);
-    stop();
-  });
-
   it('works on a document without a body (D5)', async () => {
     const doc = document.implementation.createHTMLDocument('x');
     doc.body.remove();

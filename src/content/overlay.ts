@@ -1,5 +1,5 @@
 export type OverlayState =
-  | { kind: 'locked' }
+  | { kind: 'empty' }
   | { kind: 'result'; filled: number; unfilled: number }
   | { kind: 'error'; message: string };
 
@@ -18,7 +18,7 @@ const CSS = `
 `;
 
 function describeState(state: OverlayState): { text: string; tone: string } {
-  if (state.kind === 'locked') return { text: '🔒 档案已上锁：点击浏览器工具栏中的 ResumeSub 图标解锁后自动填写', tone: 'warn' };
+  if (state.kind === 'empty') return { text: '还没有档案：点击浏览器工具栏中的 ResumeSub 图标导入简历', tone: 'warn' };
   if (state.kind === 'error') return { text: `自动填写失败：${state.message}`, tone: 'error' };
   return { text: `已填 ${state.filled} · 未填 ${state.unfilled}（点击跳到未填字段）`, tone: '' };
 }

@@ -42,5 +42,5 @@ export interface FillInstruction {
 }
 
 export type PlanResponse =
-  | { status: 'locked' }
+  | { status: 'empty' }
   | { status: 'ready'; fills: FillInstruction[]; counts: Record<EntryGroup, number> };

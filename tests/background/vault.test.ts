@@ -1,97 +1,64 @@
 import { describe, expect, it } from 'vitest';
 import { createVault } from '@/background/vault/vault';
-import { LOCKOUT_MS, MAX_FAILED_ATTEMPTS, STORAGE_KEYS } from '@/shared/constants';
+import { STORAGE_KEYS } from '@/shared/constants';
 import { emptyEducation } from '@/shared/schema/profile';
-import { emptyVaultData, type VaultData } from '@/shared/schema/vault-data';
+import { emptyVaultData } from '@/shared/schema/vault-data';
 import { memoryArea } from '../helpers/memory-area';
 
-const PW = 'correct-horse-1';
+const withName = (name: string) => (data: ReturnType<typeof emptyVaultData>) => ({
+  ...data, profile: { ...data.profile, basic: { ...data.profile.basic, name } },
+});
 
-function setupVault() {
-  let clock = 0;
-  const local = memoryArea();
-  const session = memoryArea();
-  const vault = createVault({ local, session, now: () => clock, iterations: 1000 });
-  return { vault, local, session, advance: (ms: number) => { clock += ms; } };
-}
-
-function withName(name: string): VaultData {
-  const data = emptyVaultData();
-  return { ...data, profile: { ...data.profile, basic: { ...data.profile.basic, name } } };
-}
-
-describe('vault', () => {
-  it('starts uninitialized and becomes unlocked after setup', async () => {
-    const { vault } = setupVault();
-    expect(await vault.status()).toBe('uninitialized');
-    await vault.setup(PW, emptyVaultData());
-    expect(await vault.status()).toBe('unlocked');
+describe('vault (no password)', () => {
+  it('reads empty data before anything is saved and needs no setup', async () => {
+    const vault = createVault({ local: memoryArea() });
+    expect(await vault.state()).toBe('ready');
     expect(await vault.read()).toEqual(emptyVaultData());
   });
 
-  it('rejects weak passwords and double setup', async () => {
-    const { vault } = setupVault();
-    await expect(vault.setup('short', emptyVaultData())).rejects.toMatchObject({ code: 'WEAK_PASSWORD' });
-    await vault.setup(PW, emptyVaultData());
-    await expect(vault.setup(PW, emptyVaultData())).rejects.toMatchObject({ code: 'ALREADY_INITIALIZED' });
+  it('persists encrypted data with an auto-generated device key', async () => {
+    const local = memoryArea();
+    await createVault({ local }).update(withName('李四测试'));
+    expect(typeof (await local.get(STORAGE_KEYS.deviceKey))).toBe('string');
+    expect(JSON.stringify(await local.get(STORAGE_KEYS.vault))).not.toContain('李四测试');
+    // 新的 vault 实例（模拟 service worker 重启）用同一把本机密钥读回
+    expect((await createVault({ local }).read()).profile.basic.name).toBe('李四测试');
   });
 
-  it('unlock before setup reports NOT_INITIALIZED', async () => {
-    const { vault } = setupVault();
-    await expect(vault.unlock(PW)).rejects.toMatchObject({ code: 'NOT_INITIALIZED' });
+  it('serialises concurrent updates so none is lost', async () => {
+    const vault = createVault({ local: memoryArea() });
+    await Promise.all([
+      vault.update((d) => ({ ...d, profile: { ...d.profile, custom: { ...d.profile.custom, a: '1' } } })),
+      vault.update((d) => ({ ...d, profile: { ...d.profile, custom: { ...d.profile.custom, b: '2' } } })),
+    ]);
+    expect((await vault.read()).profile.custom).toEqual({ a: '1', b: '2' });
   });
 
-  it('lock clears the key; unlock restores access', async () => {
-    const { vault } = setupVault();
-    await vault.setup(PW, withName('张三'));
-    await vault.lock();
-    expect(await vault.status()).toBe('locked');
-    await expect(vault.read()).rejects.toMatchObject({ code: 'LOCKED' });
-    await vault.unlock(PW);
-    expect((await vault.read()).profile.basic.name).toBe('张三');
+  it('rejects invalid data', async () => {
+    const vault = createVault({ local: memoryArea() });
+    const bad = (d: ReturnType<typeof emptyVaultData>) => ({
+      ...d, profile: { ...d.profile, education: [{ ...emptyEducation(), start: '2025/09' }] },
+    });
+    await expect(vault.update(bad)).rejects.toMatchObject({ code: 'INVALID_DATA' });
   });
 
-  it('rejects a wrong password', async () => {
-    const { vault } = setupVault();
-    await vault.setup(PW, emptyVaultData());
-    await vault.lock();
-    await expect(vault.unlock('wrong-password')).rejects.toMatchObject({ code: 'WRONG_PASSWORD' });
-    expect(await vault.status()).toBe('locked');
-  });
-
-  it('locks out after repeated failures, then recovers', async () => {
-    const { vault, advance } = setupVault();
-    await vault.setup(PW, emptyVaultData());
-    await vault.lock();
-    for (let i = 0; i < MAX_FAILED_ATTEMPTS; i++) {
-      await expect(vault.unlock('wrong-password')).rejects.toMatchObject({ code: 'WRONG_PASSWORD' });
-    }
-    await expect(vault.unlock(PW)).rejects.toMatchObject({ code: 'LOCKED_OUT' });
-    advance(LOCKOUT_MS);
-    await vault.unlock(PW);
-    expect(await vault.status()).toBe('unlocked');
-  });
-
-  it('stores only ciphertext', async () => {
-    const { vault, local } = setupVault();
-    await vault.setup(PW, emptyVaultData());
-    await vault.write(withName('李四测试'));
-    const stored = JSON.stringify(await local.get(STORAGE_KEYS.vault));
-    expect(stored).not.toContain('李四测试');
-    expect((await vault.read()).profile.basic.name).toBe('李四测试');
-  });
-
-  it('write rejects invalid data', async () => {
-    const { vault } = setupVault();
-    await vault.setup(PW, emptyVaultData());
-    const data = emptyVaultData();
-    const bad = { ...data, profile: { ...data.profile, education: [{ ...emptyEducation(), start: '2025/09' }] } };
-    await expect(vault.write(bad)).rejects.toMatchObject({ code: 'INVALID_DATA' });
+  it('detects a legacy password vault and clears it (plus old keys) on reset', async () => {
+    const local = memoryArea();
+    await local.set(STORAGE_KEYS.vault, { v: 1, salt: 's', iterations: 1, check: { iv: '', ct: '' }, data: { iv: '', ct: '' } });
+    await local.set('prefs', { autoLockMinutes: 60 });
+    const vault = createVault({ local });
+    expect(await vault.state()).toBe('legacy');
+    await expect(vault.read()).rejects.toMatchObject({ code: 'LEGACY' });
+    await expect(vault.update(withName('x'))).rejects.toMatchObject({ code: 'LEGACY' });
+    await vault.reset();
+    expect(await local.get('prefs')).toBeUndefined();
+    expect(await vault.state()).toBe('ready');
+    expect(await vault.read()).toEqual(emptyVaultData());
   });
 
   it('reports CORRUPTED for garbage in storage', async () => {
-    const { vault, local } = setupVault();
+    const local = memoryArea();
     await local.set(STORAGE_KEYS.vault, { nope: true });
-    await expect(vault.status()).rejects.toMatchObject({ code: 'CORRUPTED' });
+    await expect(createVault({ local }).read()).rejects.toMatchObject({ code: 'CORRUPTED' });
   });
 });

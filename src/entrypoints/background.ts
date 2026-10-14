@@ -1,37 +1,15 @@
 import { browser } from 'wxt/browser';
 import type { ScriptPublicPath } from 'wxt/utils/inject-script';
-import { createAutoLock, isAutoLockAlarm } from '@/background/auto-lock';
-import { createPendingTabs } from '@/background/pending';
-import { createPrefs } from '@/background/prefs';
 import { createRouter } from '@/background/router';
 import { createOriginCheck, createSyncQueue, injectIntoTabs, syncAutofillScripts } from '@/background/sites';
 import { fromBrowserArea } from '@/background/storage';
 import { createVault } from '@/background/vault/vault';
 
 export default defineBackground(() => {
-  // 显式声明：session 区只允许扩展自身页面访问，content script 不可读
-  void browser.storage.session
-    .setAccessLevel?.({ accessLevel: 'TRUSTED_CONTEXTS' })
-    ?.catch((e: unknown) => console.error('[ResumeSub] setAccessLevel failed', e));
-
-  const local = fromBrowserArea(browser.storage.local);
-  const session = fromBrowserArea(browser.storage.session);
-  const vault = createVault({ local, session, now: Date.now });
-  const prefs = createPrefs(local);
-  const autoLock = createAutoLock(
-    {
-      create: (name, info) => browser.alarms.create(name, info),
-      clear: (name) => browser.alarms.clear(name),
-    },
-    async () => (await prefs.get()).autoLockMinutes,
-  );
+  const vault = createVault({ local: fromBrowserArea(browser.storage.local) });
   const extOrigin = browser.runtime.getURL('/');
-  const pending = createPendingTabs(session, (tabId) => browser.tabs.sendMessage(tabId, { type: 'autofill.retry' }));
   const isOriginAllowed = createOriginCheck(browser.permissions);
-  const handle = createRouter({
-    vault, prefs, autoLock, pending, extId: browser.runtime.id, extOrigin,
-    isOriginAllowed,
-  });
+  const handle = createRouter({ vault, extId: browser.runtime.id, extOrigin, isOriginAllowed });
 
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void handle(message, sender).then(sendResponse, (error: unknown) => {
@@ -61,8 +39,4 @@ export default defineBackground(() => {
     void sync().then(() => injectIntoTabs(browser.tabs, scripting, (added.origins ?? []).filter((o) => /^https?:/.test(o))));
   });
   browser.permissions.onRemoved.addListener(() => void sync());
-
-  browser.alarms.onAlarm.addListener((alarm) => {
-    if (isAutoLockAlarm(alarm)) void vault.lock();
-  });
 });
